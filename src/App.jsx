@@ -1,117 +1,272 @@
-import React, { useState, useMemo } from 'react';
-import { 
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import {
   LayoutDashboard, Briefcase, ArrowRightLeft, Scale, TrendingUp, TrendingDown,
-  Wallet, PieChart, Activity, Menu, X, PlusCircle, RefreshCw, Search
+  Wallet, PieChart, Activity, Menu, X, PlusCircle, RefreshCw, Search,
+  Database, Upload, Loader2, AlertCircle
 } from 'lucide-react';
 
-import { netWorthAssets, portfolioData, rebalanceData, transactionData } from './data/mockData.js';
 import { formatVND, formatNum, formatPercent } from './utils/formatters.js';
+import {
+  calculateHoldings, calculatePortfolio, calculateNetWorth,
+  calculateRebalance, calculateTotalPnL
+} from './utils/portfolioCalculator.js';
+import {
+  subscribeTransactions, subscribeExternalAssets,
+  subscribeRebalanceTargets, subscribeMarketPrices
+} from './services/firestoreService.js';
+import { importCSVToFirestore, CSV_RAW_DATA } from './scripts/importCSV.js';
+
+import TransactionLog from './components/TransactionLog.jsx';
+import AddTransactionModal from './components/AddTransactionModal.jsx';
+import AssetAllocationChart from './components/AssetAllocationChart.jsx';
+import RebalanceSettings from './components/RebalanceSettings.jsx';
+import NetWorthExternalManager from './components/NetWorthExternalManager.jsx';
+
+// ============================================================
+// MAIN APP COMPONENT
+// ============================================================
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Tính toán số liệu tổng quan
-  const totalLiquid = useMemo(() => netWorthAssets.filter(a => a.group === "Thanh khoản").reduce((sum, a) => sum + a.value, 0), []);
-  const totalInvest = useMemo(() => netWorthAssets.filter(a => a.group === "Đầu tư").reduce((sum, a) => sum + a.value, 0), []);
-  const totalNetWorth = totalLiquid + totalInvest;
+  // Firebase realtime state
+  const [transactions, setTransactions] = useState([]);
+  const [externalAssets, setExternalAssets] = useState([]);
+  const [rebalanceTargets, setRebalanceTargets] = useState({});
+  const [marketPrices, setMarketPrices] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
 
-  const totalPortfolioValue = useMemo(() => portfolioData.reduce((sum, item) => sum + item.actualValue, 0), []);
-  const totalPnL = useMemo(() => portfolioData.reduce((sum, item) => sum + item.pnl, 0), []);
-  const totalPnLPercent = (totalPnL / (totalPortfolioValue - totalPnL)) * 100;
+  // ============================================================
+  // FIREBASE REALTIME SUBSCRIPTIONS
+  // ============================================================
 
-  // Xử lý Rebalance Action
-  const getRebalanceAction = (variance) => {
-    if (Math.abs(variance) <= 2) return { text: "GIỮ NGUYÊN", color: "bg-slate-100 text-slate-600" };
-    if (variance < -2) return { text: "MUA THÊM", color: "bg-emerald-500 text-white shadow-emerald-200" };
-    return { text: "BÁN BỚT", color: "bg-rose-500 text-white shadow-rose-200" };
+  useEffect(() => {
+    setLoading(true);
+    let loaded = { tx: false, ext: false, rb: false, mp: false };
+
+    const checkLoaded = () => {
+      if (loaded.tx && loaded.ext && loaded.rb && loaded.mp) {
+        setLoading(false);
+      }
+    };
+
+    const unsubTx = subscribeTransactions((items) => {
+      setTransactions(items);
+      loaded.tx = true;
+      checkLoaded();
+    });
+
+    const unsubExt = subscribeExternalAssets((items) => {
+      setExternalAssets(items);
+      loaded.ext = true;
+      checkLoaded();
+    });
+
+    const unsubRb = subscribeRebalanceTargets((targets) => {
+      setRebalanceTargets(targets);
+      loaded.rb = true;
+      checkLoaded();
+    });
+
+    const unsubMp = subscribeMarketPrices((prices) => {
+      setMarketPrices(prices);
+      loaded.mp = true;
+      checkLoaded();
+    });
+
+    // Timeout fallback
+    const timer = setTimeout(() => setLoading(false), 5000);
+
+    return () => {
+      unsubTx();
+      unsubExt();
+      unsubRb();
+      unsubMp();
+      clearTimeout(timer);
+    };
+  }, []);
+
+  // ============================================================
+  // CALCULATED DATA
+  // ============================================================
+
+  const holdings = useMemo(() => calculateHoldings(transactions), [transactions]);
+  const portfolio = useMemo(() => calculatePortfolio(holdings, marketPrices), [holdings, marketPrices]);
+  const netWorth = useMemo(() => calculateNetWorth(portfolio, externalAssets), [portfolio, externalAssets]);
+  const rebalanceData = useMemo(() => calculateRebalance(portfolio, rebalanceTargets), [portfolio, rebalanceTargets]);
+  const pnlSummary = useMemo(() => calculateTotalPnL(portfolio), [portfolio]);
+
+  // Filtered portfolio for search
+  const filteredPortfolio = useMemo(() => {
+    if (!searchTerm) return portfolio.filter(p => p.ticker !== 'VNĐ');
+    return portfolio
+      .filter(p => p.ticker !== 'VNĐ')
+      .filter(p => p.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [portfolio, searchTerm]);
+
+  // ============================================================
+  // CSV IMPORT HANDLER
+  // ============================================================
+
+  const handleImportCSV = async () => {
+    if (transactions.length > 0) {
+      if (!confirm(`Hiện có ${transactions.length} giao dịch trong Firebase. Bạn muốn import thêm ${CSV_RAW_DATA.split('\n').length - 1} giao dịch từ CSV?`)) {
+        return;
+      }
+    }
+
+    setImporting(true);
+    try {
+      const count = await importCSVToFirestore(CSV_RAW_DATA);
+      alert(`✅ Import thành công ${count} giao dịch!`);
+    } catch (err) {
+      console.error('Import error:', err);
+      alert('❌ Lỗi import: ' + err.message);
+    } finally {
+      setImporting(false);
+    }
   };
 
+  // ============================================================
+  // NAV ITEMS
+  // ============================================================
+
   const navItems = [
-    { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "Tổng quan (Net Worth)" },
+    { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "Tổng quan" },
     { id: 'portfolio', icon: <Briefcase size={20} />, label: "Danh mục Đầu tư" },
-    { id: 'rebalance', icon: <Scale size={20} />, label: "Tái cơ cấu (Rebalance)" },
-    { id: 'transactions', icon: <ArrowRightLeft size={20} />, label: "Nhật ký GD (DATA)" },
+    { id: 'rebalance', icon: <Scale size={20} />, label: "Tái cơ cấu" },
+    { id: 'transactions', icon: <ArrowRightLeft size={20} />, label: "Nhật ký GD" },
   ];
 
-  return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden selection:bg-blue-100">
-      
-      {/* --- SIDEBAR CHO DESKTOP --- */}
-      <aside className="hidden md:flex w-72 bg-white border-r border-slate-200 shadow-sm flex-col z-10">
-        <div className="p-6 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
-              <Activity size={24} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">V5.0 Portfolio</h1>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">Hệ thống quản lý cá nhân</p>
-            </div>
+  // Donut chart data
+  const allocationChartData = useMemo(() => {
+    const COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+    const classMap = {};
+    portfolio.forEach(p => {
+      if (!classMap[p.assetClass]) classMap[p.assetClass] = 0;
+      classMap[p.assetClass] += p.actualValue;
+    });
+    return Object.entries(classMap)
+      .filter(([, v]) => v > 0)
+      .map(([label, value], i) => ({
+        label,
+        value,
+        color: COLORS[i % COLORS.length]
+      }));
+  }, [portfolio]);
+
+  // ============================================================
+  // LOADING SCREEN
+  // ============================================================
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-content">
+          <div className="loading-logo">
+            <Activity size={40} />
+          </div>
+          <h2 className="loading-title">V5.0 Portfolio</h2>
+          <p className="loading-subtitle">Đang kết nối Firebase...</p>
+          <div className="loading-bar">
+            <div className="loading-bar-fill"></div>
           </div>
         </div>
-        
-        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+      </div>
+    );
+  }
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+
+  return (
+    <div className="app-layout">
+      {/* Transaction Modal */}
+      <AddTransactionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      {/* --- SIDEBAR --- */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">
+            <Activity size={22} />
+          </div>
+          <div>
+            <h1 className="sidebar-title">V5.0 Portfolio</h1>
+            <p className="sidebar-subtitle">Quản lý tài sản cá nhân</p>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav">
           {navItems.map(item => (
             <button
               key={item.id}
+              id={`nav-${item.id}`}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200
-                ${activeTab === item.id 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+              className={`nav-item ${activeTab === item.id ? 'nav-item--active' : ''}`}
             >
-              <span className={activeTab === item.id ? 'text-blue-600' : 'text-slate-400'}>{item.icon}</span>
+              <span className="nav-icon">{item.icon}</span>
               {item.label}
             </button>
           ))}
         </nav>
 
-        <div className="p-5 border-t border-slate-100 bg-slate-50/50">
-          <div className="bg-white border border-slate-200 p-4 rounded-xl text-sm shadow-sm">
-            <h4 className="font-bold text-slate-800 mb-3 flex items-center justify-between">
+        {/* Sidebar Footer — Exchange Rates */}
+        <div className="sidebar-footer">
+          <div className="sidebar-rates glass-card-mini">
+            <h4 className="sidebar-rates-title">
               Tỷ giá tham chiếu
-              <RefreshCw size={14} className="text-slate-400 cursor-pointer hover:text-blue-600 transition-colors" />
+              <RefreshCw size={14} className="sidebar-rates-refresh" />
             </h4>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">USDT/VNĐ</span>
-                <span className="font-bold text-slate-700">27.500</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Vàng/Chỉ</span>
-                <span className="font-bold text-slate-700">17.650k</span>
+            <div className="sidebar-rates-list">
+              <div className="sidebar-rate-row">
+                <span>USDT/VNĐ</span>
+                <span className="sidebar-rate-value">
+                  {marketPrices['USDT']?.exchangeRate
+                    ? formatNum(marketPrices['USDT'].exchangeRate)
+                    : '—'}
+                </span>
               </div>
             </div>
           </div>
+
+          {/* CSV Import Button */}
+          {transactions.length === 0 && (
+            <button className="btn-glass import-btn" onClick={handleImportCSV} disabled={importing}>
+              {importing ? (
+                <><Loader2 size={16} className="spin" /> Đang import...</>
+              ) : (
+                <><Upload size={16} /> Import dữ liệu CSV</>
+              )}
+            </button>
+          )}
         </div>
       </aside>
 
-      {/* --- HEADER & MOBILE MENU --- */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        <header className="md:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between z-20 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Activity className="text-blue-600" size={24} />
-            <h1 className="font-bold text-slate-900">V5.0 Portfolio</h1>
+      {/* --- MOBILE HEADER --- */}
+      <div className="main-container">
+        <header className="mobile-header">
+          <div className="mobile-header-brand">
+            <Activity size={22} className="color-primary" />
+            <h1>V5.0 Portfolio</h1>
           </div>
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 text-slate-600 bg-slate-100 rounded-lg"
-          >
+          <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </header>
 
+        {/* Mobile Dropdown */}
         {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-[60px] left-0 right-0 bg-white border-b border-slate-200 shadow-xl z-20 p-4 space-y-2 animate-in slide-in-from-top-2">
+          <div className="mobile-nav-dropdown">
             {navItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold
-                  ${activeTab === item.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600'}`}
+                className={`nav-item ${activeTab === item.id ? 'nav-item--active' : ''}`}
               >
                 {item.icon} {item.label}
               </button>
@@ -119,260 +274,322 @@ export default function App() {
           </div>
         )}
 
-        {/* --- MAIN CONTENT AREA --- */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-8">
-          <div className="max-w-6xl mx-auto space-y-6 pb-20">
+        {/* --- MAIN CONTENT --- */}
+        <main className="main-content">
+          <div className="content-wrapper">
 
-            {/* ===== VIEW: TỔNG QUAN ===== */}
+            {/* ===== DASHBOARD ===== */}
             {activeTab === 'dashboard' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex justify-between items-end mb-6">
+              <div className="animate-fade-in">
+                <div className="section-header">
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-900">Tổng quan Tài sản</h2>
-                    <p className="text-slate-500 text-sm mt-1">Cập nhật Net Worth và hiệu suất danh mục đầu tư.</p>
+                    <h2 className="section-title">Tổng quan Tài sản</h2>
+                    <p className="section-subtitle">Cập nhật Net Worth và hiệu suất danh mục đầu tư.</p>
                   </div>
-                  <button className="hidden md:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm shadow-blue-200 transition-all">
-                    <PlusCircle size={18} /> Ghi nhận Giao dịch
+                  <button className="btn-primary btn-hidden-mobile" onClick={() => setIsModalOpen(true)}>
+                    <PlusCircle size={18} />
+                    Ghi nhận Giao dịch
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="bg-blue-50 p-3 rounded-xl"><Wallet className="text-blue-600" size={24} /></div>
+                {/* KPI Cards */}
+                <div className="kpi-grid">
+                  <div className="kpi-card glass-card">
+                    <div className="kpi-icon kpi-icon--blue">
+                      <Wallet size={24} />
                     </div>
-                    <h3 className="text-slate-500 font-medium text-sm mb-1">Tổng Tài Sản (Net Worth)</h3>
-                    <p className="text-3xl font-extrabold text-slate-900 tracking-tight">{formatVND(totalNetWorth)}</p>
+                    <h3 className="kpi-label">Tổng Tài Sản (Net Worth)</h3>
+                    <p className="kpi-value">{formatVND(netWorth.totalNetWorth)}</p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="bg-indigo-50 p-3 rounded-xl"><PieChart className="text-indigo-600" size={24} /></div>
+                  <div className="kpi-card glass-card">
+                    <div className="kpi-icon kpi-icon--indigo">
+                      <PieChart size={24} />
                     </div>
-                    <h3 className="text-slate-500 font-medium text-sm mb-1">Giá trị Danh mục Đầu tư</h3>
-                    <p className="text-3xl font-extrabold text-slate-900 tracking-tight">{formatVND(totalPortfolioValue)}</p>
+                    <h3 className="kpi-label">Giá trị Danh mục Đầu tư</h3>
+                    <p className="kpi-value">{formatVND(pnlSummary.totalValue)}</p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-50 rounded-bl-full opacity-50 pointer-events-none"></div>
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={`p-3 rounded-xl ${totalPnL >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                        {totalPnL >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+                  <div className="kpi-card glass-card kpi-card--pnl">
+                    <div className="kpi-header-row">
+                      <div className={`kpi-icon ${pnlSummary.totalPnL >= 0 ? 'kpi-icon--emerald' : 'kpi-icon--rose'}`}>
+                        {pnlSummary.totalPnL >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${totalPnL >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                        {formatPercent(totalPnLPercent)}
+                      <span className={`kpi-badge ${pnlSummary.totalPnL >= 0 ? 'kpi-badge--up' : 'kpi-badge--down'}`}>
+                        {formatPercent(pnlSummary.totalPnLPercent)}
                       </span>
                     </div>
-                    <h3 className="text-slate-500 font-medium text-sm mb-1">Tổng Lãi/Lỗ Danh Mục</h3>
-                    <p className={`text-3xl font-extrabold tracking-tight ${totalPnL >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {totalPnL > 0 ? '+' : ''}{formatVND(totalPnL)}
+                    <h3 className="kpi-label">Tổng Lãi/Lỗ Danh mục</h3>
+                    <p className={`kpi-value ${pnlSummary.totalPnL >= 0 ? 'color-up' : 'color-down'}`}>
+                      {pnlSummary.totalPnL > 0 ? '+' : ''}{formatVND(pnlSummary.totalPnL)}
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
-                    Cơ cấu Tổng tài sản (Liquid vs Invest)
-                  </h3>
-                  <div className="w-full h-4 bg-slate-100 rounded-full flex overflow-hidden mb-8">
-                    <div className="bg-sky-500 h-full transition-all" style={{ width: `${(totalLiquid/totalNetWorth)*100}%` }} title="Thanh khoản"></div>
-                    <div className="bg-indigo-600 h-full transition-all border-l-2 border-white" style={{ width: `${(totalInvest/totalNetWorth)*100}%` }} title="Đầu tư"></div>
+                {/* Asset Allocation */}
+                <div className="glass-card section-card">
+                  <h3 className="card-title">Cơ cấu Tổng tài sản</h3>
+
+                  {/* Progress bar */}
+                  <div className="allocation-bar">
+                    <div
+                      className="allocation-bar-segment allocation-bar-segment--liquid"
+                      style={{ width: `${netWorth.totalNetWorth > 0 ? (netWorth.totalLiquid / netWorth.totalNetWorth) * 100 : 0}%` }}
+                      title="Thanh khoản"
+                    ></div>
+                    <div
+                      className="allocation-bar-segment allocation-bar-segment--invest"
+                      style={{ width: `${netWorth.totalNetWorth > 0 ? (netWorth.totalInvest / netWorth.totalNetWorth) * 100 : 0}%` }}
+                      title="Đầu tư"
+                    ></div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                  <div className="allocation-grid">
+                    {/* Liquid */}
                     <div>
-                      <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full bg-sky-500"></div>
-                          <h4 className="font-bold text-slate-800">Thanh khoản cao</h4>
+                      <div className="allocation-header">
+                        <div className="allocation-header-left">
+                          <div className="dot dot--liquid"></div>
+                          <h4>Thanh khoản cao</h4>
                         </div>
-                        <span className="font-bold text-sky-600">{((totalLiquid/totalNetWorth)*100).toFixed(1)}%</span>
+                        <span className="allocation-pct allocation-pct--liquid">
+                          {netWorth.totalNetWorth > 0 ? ((netWorth.totalLiquid / netWorth.totalNetWorth) * 100).toFixed(1) : 0}%
+                        </span>
                       </div>
-                      <div className="space-y-4">
-                        {netWorthAssets.filter(a => a.group === "Thanh khoản").sort((a,b)=>b.value-a.value).map(item => (
-                          <div key={item.id} className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-600">{item.name}</span>
-                            <span className="text-sm font-bold text-slate-900">{formatVND(item.value)}</span>
+                      <div className="allocation-items">
+                        {netWorth.liquidAssets.map(item => (
+                          <div key={item.id} className="allocation-item">
+                            <span className="allocation-item-name">{item.name}</span>
+                            <span className="allocation-item-value">{formatVND(item.value)}</span>
                           </div>
                         ))}
+                        {netWorth.liquidAssets.length === 0 && (
+                          <p className="allocation-empty">Chưa có tài sản thanh khoản</p>
+                        )}
                       </div>
                     </div>
+
+                    {/* Invest */}
                     <div>
-                      <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full bg-indigo-600"></div>
-                          <h4 className="font-bold text-slate-800">Đầu tư dài hạn</h4>
+                      <div className="allocation-header">
+                        <div className="allocation-header-left">
+                          <div className="dot dot--invest"></div>
+                          <h4>Đầu tư dài hạn</h4>
                         </div>
-                        <span className="font-bold text-indigo-600">{((totalInvest/totalNetWorth)*100).toFixed(1)}%</span>
+                        <span className="allocation-pct allocation-pct--invest">
+                          {netWorth.totalNetWorth > 0 ? ((netWorth.totalInvest / netWorth.totalNetWorth) * 100).toFixed(1) : 0}%
+                        </span>
                       </div>
-                      <div className="space-y-4">
-                        {netWorthAssets.filter(a => a.group === "Đầu tư").sort((a,b)=>b.value-a.value).map(item => (
-                          <div key={item.id} className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-600">{item.name}</span>
-                            <span className="text-sm font-bold text-slate-900">{formatVND(item.value)}</span>
+                      <div className="allocation-items">
+                        {netWorth.investAssets.map(item => (
+                          <div key={item.id} className="allocation-item">
+                            <span className="allocation-item-name">{item.name}</span>
+                            <span className="allocation-item-value">{formatVND(item.value)}</span>
                           </div>
                         ))}
+                        {netWorth.investAssets.length === 0 && (
+                          <p className="allocation-empty">Chưa có tài sản đầu tư</p>
+                        )}
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Donut Chart */}
+                {allocationChartData.length > 0 && (
+                  <div className="glass-card section-card">
+                    <h3 className="card-title">Phân bổ theo loại tài sản</h3>
+                    <AssetAllocationChart data={allocationChartData} size={240} />
+                  </div>
+                )}
+
+                {/* External Assets Manager */}
+                <div className="glass-card section-card">
+                  <NetWorthExternalManager externalAssets={externalAssets} />
                 </div>
               </div>
             )}
 
-            {/* ===== VIEW: DANH MỤC ===== */}
+            {/* ===== PORTFOLIO ===== */}
             {activeTab === 'portfolio' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+              <div className="animate-fade-in">
+                <div className="section-header section-header-row">
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-900">Danh mục & Tỷ giá</h2>
-                    <p className="text-slate-500 text-sm mt-1">Chi tiết hiệu suất từng mã tài sản đang nắm giữ.</p>
+                    <h2 className="section-title">Danh mục & Tỷ giá</h2>
+                    <p className="section-subtitle">
+                      Chi tiết hiệu suất từng mã tài sản đang nắm giữ — {filteredPortfolio.length} mã
+                    </p>
                   </div>
-                  <div className="relative w-full md:w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                      type="text" placeholder="Tìm mã (VD: VFF, BTC...)" 
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm"
-                      value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                  <div className="search-box">
+                    <Search size={16} className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="Tìm mã (VD: VFF, BTC...)"
+                      className="search-input"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
                     />
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+
+                <div className="glass-card table-wrapper">
+                  <div className="table-scroll">
+                    <table className="data-table">
                       <thead>
-                        <tr className="bg-slate-50/80 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
-                          <th className="p-4 font-bold">Tài sản / Mã</th>
-                          <th className="p-4 font-bold text-right">Số lượng</th>
-                          <th className="p-4 font-bold text-right">Giá vốn</th>
-                          <th className="p-4 font-bold text-right">Giá HT</th>
-                          <th className="p-4 font-bold text-right">Tổng GT (VNĐ)</th>
-                          <th className="p-4 font-bold text-right">Lãi / Lỗ</th>
-                          <th className="p-4 font-bold text-right">% L/L</th>
+                        <tr>
+                          <th>Tài sản / Mã</th>
+                          <th className="text-right">Số lượng</th>
+                          <th className="text-right">Giá vốn TB</th>
+                          <th className="text-right">Giá HT</th>
+                          <th className="text-right">Tổng GT (VNĐ)</th>
+                          <th className="text-right">Lãi / Lỗ</th>
+                          <th className="text-right">% L/L</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {portfolioData.filter(item => item.ticker.toLowerCase().includes(searchTerm.toLowerCase())).map((item, idx) => (
-                          <tr key={idx} className="hover:bg-blue-50/50 transition-colors group">
-                            <td className="p-4">
-                              <div className="font-bold text-slate-900 text-base">{item.ticker}</div>
-                              <div className="text-xs text-slate-500 mt-0.5">{item.type} • {item.storage}</div>
+                      <tbody>
+                        {filteredPortfolio.length === 0 ? (
+                          <tr><td colSpan={7} className="table-empty">Không có tài sản nào</td></tr>
+                        ) : filteredPortfolio.map((item, idx) => (
+                          <tr key={idx} className="table-row-hover">
+                            <td>
+                              <div className="td-ticker">{item.ticker}</div>
+                              <div className="td-meta">{item.assetClass} • {item.storage || '—'}</div>
                             </td>
-                            <td className="p-4 text-right font-semibold text-slate-700">{formatNum(item.qty)}</td>
-                            <td className="p-4 text-right text-sm text-slate-600">{formatNum(item.avgCost)}</td>
-                            <td className="p-4 text-right text-sm text-slate-600">{formatNum(item.marketPrice)}</td>
-                            <td className="p-4 text-right font-bold text-slate-900">{formatVND(item.actualValue)}</td>
-                            <td className={`p-4 text-right font-bold ${item.pnl > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              {item.pnl > 0 ? '+' : ''}{formatNum(item.pnl)}
+                            <td className="text-right td-mono">{formatNum(item.qty)}</td>
+                            <td className="text-right td-mono td-muted">{formatNum(item.avgCost)}</td>
+                            <td className="text-right td-mono td-muted">{formatNum(item.marketPrice)}</td>
+                            <td className="text-right td-mono td-bold">{formatVND(item.actualValue)}</td>
+                            <td className={`text-right td-mono td-bold ${item.pnl >= 0 ? 'color-up' : 'color-down'}`}>
+                              {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)}
                             </td>
-                            <td className="p-4 text-right">
-                              <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-bold ${item.pnl > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            <td className="text-right">
+                              <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
                                 {formatPercent(item.pnlPercent)}
                               </span>
                             </td>
                           </tr>
                         ))}
                       </tbody>
+                      {filteredPortfolio.length > 0 && (
+                        <tfoot>
+                          <tr className="table-footer-row">
+                            <td colSpan={4} className="td-bold">Tổng cộng</td>
+                            <td className="text-right td-bold">{formatVND(pnlSummary.totalValue)}</td>
+                            <td className={`text-right td-bold ${pnlSummary.totalPnL >= 0 ? 'color-up' : 'color-down'}`}>
+                              {pnlSummary.totalPnL > 0 ? '+' : ''}{formatVND(pnlSummary.totalPnL)}
+                            </td>
+                            <td className="text-right">
+                              <span className={`pnl-badge ${pnlSummary.totalPnL >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
+                                {formatPercent(pnlSummary.totalPnLPercent)}
+                              </span>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ===== VIEW: TÁI CƠ CẤU ===== */}
+            {/* ===== REBALANCE ===== */}
             {activeTab === 'rebalance' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <header className="mb-6">
-                  <h2 className="text-2xl font-bold text-slate-900">Bảng Tái cơ cấu (Rebalance)</h2>
-                  <p className="text-slate-500 text-sm mt-1">So sánh Tỷ trọng Thực tế so với Mục tiêu. Chênh lệch lớn yêu cầu Mua/Bán.</p>
-                </header>
+              <div className="animate-fade-in">
+                <div className="section-header">
+                  <div>
+                    <h2 className="section-title">Bảng Tái cơ cấu (Rebalance)</h2>
+                    <p className="section-subtitle">
+                      So sánh tỷ trọng thực tế với mục tiêu. Chênh lệch lớn yêu cầu Mua/Bán.
+                    </p>
+                  </div>
+                  <RebalanceSettings
+                    currentTargets={rebalanceTargets}
+                    onSave={(targets) => setRebalanceTargets(targets)}
+                  />
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+                <div className="rebalance-grid">
                   {rebalanceData.map((item, idx) => {
-                    const variance = item.actualWeight - item.targetWeight;
-                    const action = getRebalanceAction(variance);
-                    
+                    const actionStyles = {
+                      hold: { bg: 'var(--glass-bg)', color: 'var(--text-secondary)', border: 'var(--glass-border)' },
+                      buy: { bg: 'var(--color-emerald-500)', color: '#fff', border: 'var(--color-emerald-500)' },
+                      sell: { bg: 'var(--color-rose-500)', color: '#fff', border: 'var(--color-rose-500)' },
+                    };
+                    const style = actionStyles[item.action.type];
+
                     return (
-                      <div key={idx} className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-200 transition-colors">
-                        <div className="flex justify-between items-start mb-4">
+                      <div key={idx} className="rebalance-card glass-card">
+                        <div className="rebalance-card-header">
                           <div>
-                            <h3 className="font-bold text-lg text-slate-900">{item.asset}</h3>
-                            <p className="text-sm font-medium text-slate-500 mt-0.5">{formatVND(item.actualValue)}</p>
+                            <h3 className="rebalance-card-title">{item.label || item.assetClass}</h3>
+                            <p className="rebalance-card-value">{formatVND(item.actualValue)}</p>
                           </div>
-                          <span className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm ${action.color}`}>
-                            {action.text}
+                          <span
+                            className="rebalance-action-badge"
+                            style={{ background: style.bg, color: style.color, borderColor: style.border }}
+                          >
+                            {item.action.text}
                           </span>
                         </div>
 
-                        <div className="space-y-3">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Thực tế: <strong className="text-slate-900">{item.actualWeight.toFixed(2)}%</strong></span>
-                            <span className="text-slate-500">Mục tiêu: <strong className="text-slate-900">{item.targetWeight.toFixed(2)}%</strong></span>
+                        <div className="rebalance-card-body">
+                          <div className="rebalance-weights">
+                            <span>Thực tế: <strong>{item.actualWeight.toFixed(2)}%</strong></span>
+                            <span>Mục tiêu: <strong>{item.targetWeight.toFixed(2)}%</strong></span>
                           </div>
-                          
-                          <div className="relative w-full h-4 bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className="absolute top-0 bottom-0 border-r-2 border-slate-400 z-10"
-                              style={{ left: `${item.targetWeight}%` }}
-                              title="Mục tiêu"
+
+                          <div className="rebalance-bar">
+                            <div
+                              className="rebalance-bar-target"
+                              style={{ left: `${Math.min(item.targetWeight, 100)}%` }}
                             ></div>
-                            <div 
-                              className={`absolute top-0 left-0 h-full transition-all duration-1000 ${
-                                variance > 2 ? 'bg-rose-400' : variance < -2 ? 'bg-emerald-400' : 'bg-blue-500'
-                              }`}
-                              style={{ width: `${item.actualWeight}%` }}
+                            <div
+                              className={`rebalance-bar-fill rebalance-bar-fill--${item.action.type}`}
+                              style={{ width: `${Math.min(item.actualWeight, 100)}%` }}
                             ></div>
                           </div>
-                          
-                          <div className="text-right">
-                            <span className={`text-sm font-bold ${
-                              variance > 2 ? 'text-rose-500' : variance < -2 ? 'text-emerald-500' : 'text-slate-400'
-                            }`}>
-                              Độ lệch: {variance > 0 ? '+' : ''}{variance.toFixed(2)}%
+
+                          <div className="rebalance-variance">
+                            <span className={`rebalance-variance-value rebalance-variance--${item.action.type}`}>
+                              Độ lệch: {item.variance > 0 ? '+' : ''}{item.variance.toFixed(2)}%
                             </span>
                           </div>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               </div>
             )}
 
-            {/* ===== VIEW: GIAO DỊCH ===== */}
+            {/* ===== TRANSACTIONS ===== */}
             {activeTab === 'transactions' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <header className="mb-6">
-                  <h2 className="text-2xl font-bold text-slate-900">Nhật ký Giao dịch (DATA)</h2>
-                  <p className="text-slate-500 text-sm mt-1">Lịch sử giao dịch và ghi chú tâm lý, lý do vào/ra lệnh.</p>
-                </header>
-
-                <div className="space-y-4">
-                  {transactionData.map((item, idx) => (
-                    <div key={idx} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 md:items-center justify-between hover:shadow-md transition-shadow">
-                      <div className="flex items-center gap-4 md:w-1/4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${item.type === 'Mua' ? 'bg-emerald-100 text-emerald-600' : item.type === 'Bán' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
-                          {item.type.charAt(0)}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900">{item.ticker} <span className="text-sm font-normal text-slate-500">({item.asset})</span></h4>
-                          <p className="text-xs text-slate-400 font-medium">{item.date}</p>
-                        </div>
-                      </div>
-                      <div className="md:w-1/4">
-                        <p className="text-xs text-slate-500 uppercase font-semibold">Giá trị</p>
-                        <p className="font-bold text-slate-900">{formatVND(item.value)}</p>
-                      </div>
-                      <div className="md:w-1/2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Ghi chú (Trigger/Target)</p>
-                        <p className="text-sm text-slate-700 italic">"{item.notes}"</p>
-                      </div>
-                    </div>
-                  ))}
+              <div className="animate-fade-in">
+                <div className="section-header">
+                  <div>
+                    <h2 className="section-title">Nhật ký Giao dịch</h2>
+                    <p className="section-subtitle">Lịch sử giao dịch và ghi chú đầu tư.</p>
+                  </div>
+                  <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
+                    <PlusCircle size={18} />
+                    Thêm Giao dịch
+                  </button>
                 </div>
+
+                <TransactionLog
+                  transactions={transactions}
+                  loading={loading}
+                />
               </div>
             )}
 
           </div>
         </main>
+
+        {/* Mobile FAB */}
+        <button className="fab" onClick={() => setIsModalOpen(true)}>
+          <PlusCircle size={24} />
+        </button>
       </div>
     </div>
   );

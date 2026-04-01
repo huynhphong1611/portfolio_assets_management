@@ -6,9 +6,11 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      # Đồng bộ code từ máy tính (máy host) vào trong container để code có thể Hot-reload
+      # Đồng bộ code từ máy host vào container cho Hot-reload
       - .:/app
-      # Giữ node_modules ẩn bên trong container, không tràn ra Windows của bạn
+      # Giữ node_modules ẩn trong container
       - /app/node_modules
+    env_file:
+      - .env
     environment:
-      - CHOKIDAR_USEPOLLING=true # Giúp tính năng tự động reload hoạt động tốt trên Windows
+      - CHOKIDAR_USEPOLLING=true

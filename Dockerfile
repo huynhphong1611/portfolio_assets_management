@@ -8,5 +8,11 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# Lệnh khởi chạy dev server, expose ra mạng bên ngoài của container
-CMD ["npm", "run", "dev", "--", "--host"]
+# Copy toàn bộ source code
+COPY . .
+
+# Expose port
+EXPOSE 5173
+
+# Lệnh khởi chạy dev server
+CMD ["npm", "run", "dev"]
