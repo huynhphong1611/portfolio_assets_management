@@ -1,16 +1,35 @@
 version: '3.8'
 
 services:
+  # ============================================================
+  # FRONTEND — React + Vite
+  # ============================================================
   webapp:
     build: .
     ports:
       - "5173:5173"
     volumes:
-      # Đồng bộ code từ máy host vào container cho Hot-reload
       - .:/app
-      # Giữ node_modules ẩn trong container
       - /app/node_modules
     env_file:
       - .env
     environment:
       - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api
+
+  # ============================================================
+  # API — Python FastAPI + vnstock
+  # ============================================================
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - VNSTOCK_API_ENABLED=${VNSTOCK_API_ENABLED:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}

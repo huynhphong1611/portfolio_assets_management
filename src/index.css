@@ -1953,3 +1953,621 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ============================================================
+   28. KPI 4-COLUMN GRID
+   ============================================================ */
+
+.kpi-grid--4 {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .kpi-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .kpi-grid--4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+
+/* ============================================================
+   29. ASSETS vs DEBT BAR
+   ============================================================ */
+
+.assets-debt-bar {
+  width: 100%;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  overflow: hidden;
+  margin-bottom: 16px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.assets-debt-bar-asset {
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  transition: width 800ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 60px;
+}
+
+.assets-debt-bar-debt {
+  background: linear-gradient(90deg, #f43f5e, #e11d48);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  transition: width 800ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 40px;
+}
+
+.assets-debt-details {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.assets-debt-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.dot--debt {
+  background: var(--color-rose-500);
+}
+
+
+/* ============================================================
+   30. LIABILITIES
+   ============================================================ */
+
+.liabilities-manager {}
+
+.liabilities-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.liabilities-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.liabilities-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.liabilities-total {
+  text-align: right;
+}
+
+.liabilities-total-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+}
+
+.liabilities-total-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.liabilities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.liability-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-fast);
+}
+
+.liability-item:hover {
+  border-color: var(--border-default);
+}
+
+.liability-item-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.liability-type-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-rose-600);
+  background: var(--color-rose-50);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.liability-item-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.liability-rate {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.liability-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.liability-item-value {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.liability-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.liability-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+
+/* ============================================================
+   31. FUND CARDS
+   ============================================================ */
+
+.fund-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fund-card {
+  padding: 0;
+  overflow: hidden;
+  transition: all var(--transition-smooth);
+}
+
+.fund-card--expanded {
+  border-color: var(--color-blue-200);
+  box-shadow: 0 8px 40px rgba(59, 130, 246, 0.08);
+}
+
+.fund-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.fund-card-header:hover {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.fund-card-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fund-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: white;
+  flex-shrink: 0;
+}
+
+.fund-card-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.fund-card-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.fund-card-values {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.fund-card-total {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.fund-card-pnl {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.fund-allocation-bar {
+  height: 4px;
+  background: var(--color-slate-100);
+  margin: 0 24px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.fund-allocation-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 800ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fund-allocation-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 4px 24px 0;
+  text-align: right;
+}
+
+.fund-card-body {
+  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 12px;
+  padding-top: 16px;
+  animation: fadeIn 200ms ease-out;
+}
+
+.fund-cash-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-blue-50);
+  border: 1px solid var(--color-blue-100);
+  border-radius: var(--radius-sm);
+}
+
+.fund-cash-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-blue-700);
+}
+
+.fund-cash-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-blue-700);
+}
+
+.fund-deposit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fund-deposit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.fund-deposit-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.fund-holdings {
+  margin-top: 4px;
+}
+
+.fund-holdings-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.fund-table {
+  font-size: 0.82rem;
+}
+
+.fund-chart-section {
+  margin-top: 8px;
+}
+
+
+/* ============================================================
+   32. PRICE MANAGER
+   ============================================================ */
+
+.price-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.price-date-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.price-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.price-categories {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (min-width: 768px) {
+  .price-categories {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.price-category {
+  padding: 20px;
+}
+
+.price-category-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.price-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.price-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.price-item-label {
+  flex: 1;
+}
+
+.price-item-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+}
+
+.price-item-unit {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.price-item-input {
+  width: 130px;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ============================================================
+   33. LINE CHART
+   ============================================================ */
+
+.line-chart-container {
+  position: relative;
+}
+
+.chart-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.line-chart-svg {
+  width: 100%;
+  height: auto;
+}
+
+.chart-axis-label {
+  fill: var(--color-slate-400);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+.chart-line {
+  transition: opacity var(--transition-fast);
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: white;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  padding: 10px 14px;
+  z-index: 10;
+  min-width: 180px;
+}
+
+.chart-tooltip-date {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 2px 0;
+}
+
+.chart-tooltip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chart-tooltip-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex: 1;
+}
+
+.chart-tooltip-value {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.chart-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.chart-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+
+/* ============================================================
+   34. PORTFOLIO TABLE HEADER
+   ============================================================ */
+
+.portfolio-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.search-box-sm {
+  max-width: 200px;
+}
+
+.search-box-sm .search-input {
+  padding: 7px 12px 7px 32px;
+  font-size: 0.8rem;
+}
+
+
+/* ============================================================
+   35. FORM HINT
+   ============================================================ */
+
+.form-hint-cash {
+  font-size: 0.78rem;
+  color: var(--color-blue-600);
+  font-weight: 600;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--color-blue-50);
+  border-radius: 4px;
+}
