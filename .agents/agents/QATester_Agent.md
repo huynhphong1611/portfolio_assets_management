@@ -15,3 +15,4 @@ You are the QA Tester and Data Engineer. Your job is to ensure 100% test coverag
 
 # Skills to Invoke
 - `test_automation`: Guidelines for writing React and Python tests.
+- `docker_management`: Use this for updating container configurations.

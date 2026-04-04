@@ -1,81 +1,58 @@
-# 📊 Portfolio Manager V5 — Personal Asset Management System
+# 📊 Portfolio Manager V5.2 — Advanced Digital Asset Management
 
-> **A Vibe Coding Project** — Built with AI-assisted development  
-> Comprehensive personal portfolio management with fund-based architecture, real-time Firebase sync, and Vietnamese stock market integration.
+> **A Vibe Coding Project** — Built with AI-assisted development by Google Deepmind (Antigravity Agent)
+> Comprehensive personal portfolio management with fund-based architecture, real-time Firebase sync, Vietnamese stock market integration (VnStock & FMarket), Crypto APIs (CoinGecko), and automated Dockerized Vitest execution.
 
 ---
 
-## ✨ Features
+## ✨ Core Features
 
 ### 🏠 Dashboard — Tổng quan Tài sản
-- **Net Worth tracking** — Total Assets minus Liabilities
-- **Assets vs Liabilities** visualization with gradient progress bars
-- **Growth charts** — Track net worth changes over time with daily snapshots
-- **External assets** — TOPI, bank deposits, wedding gold, real estate...
-- **Liabilities management** — Bank loans, credit cards, installments
+- **Net Worth tracking** — Total Assets minus Liabilities.
+- **Assets vs Liabilities** visualization with gradient progress bars.
+- **Growth charts** — Track net worth changes over time with daily snapshots.
+- **External assets** — TOPI, bank deposits, real estate.
+- **Liabilities management** — Bank loans, credit cards.
 
 ### 💼 Danh mục Đầu tư — Portfolio Overview
-- **All holdings at a glance** — Every asset across all funds
-- **Asset allocation** donut chart (Bonds, Stocks, Crypto, Gold, Cash)
-- **Portfolio growth chart** — Value, Cost Basis, P&L over time
-- **Search & filter** across all tickers
+- **All holdings at a glance** — Mathematical verification via FIFO rules.
+- **Asset allocation** donut chart (Bonds, Stocks, Crypto, Gold, Cash).
+- **Portfolio growth chart** — Value, Cost Basis, P&L over time.
 
-### 🏦 Quỹ Đầu tư — Fund Management
-- **5 investment funds**: Bond Fund, Stock Fund, Crypto Fund, Gold Fund, Cash Fund
-- **Per-fund cash balance** — Deposit/withdraw money into each fund
-- **Cash validation** — Cannot buy if fund has insufficient cash
-- **Sell → returns cash** back to the fund automatically
-- **Per-fund P&L** and growth charts
+### 🏦 Quỹ Đầu tư & Crypto — API Connectivity
+- **Automated Pricing**:
+  - Fetches VN Stock & Fund NAVs from [vnstock](https://github.com/thinh-vu/vnstock).
+  - Fetches Crypto USD from **CoinGecko API** (Historical + Realtime).
+- **Rate Limit Resilience**: Implemented 60-second In-Memory Server Caching to protect against vnstock community rate drops.
+- **Smart Validation**: Handles SystemExits and API blocks gracefully, routing warnings back to React.
 
-### ⚖️ Tái cơ cấu — Rebalancing
-- **Target weight allocation** per asset class (editable, saved to Firebase)
-- **Visual comparison** — Actual vs Target weights with variance indicators
-- **Action badges** — BUY MORE / SELL / HOLD recommendations
-
-### 📋 Bảng giá — Daily Price Entry
-- **Manual price input** for: Gold, USD, Bonds, Stocks, Crypto
-- **API integration** — Fetch Vietnamese stock prices from [vnstock](https://github.com/thinh-vu/vnstock) 
-- **Historical prices** — View and edit past daily prices
-- **Fallback logic** — Uses latest available price if today's not entered
-
-### 📝 Nhật ký Giao dịch — Transaction Log
-- **Full transaction history** with search, filter, sort, pagination
-- **Fund-linked transactions** — Every buy/sell tied to a specific fund
-- **14-field transaction form** with auto-calculated totals
-- **CSV import** — Bulk import from Excel/CSV
-- **Auto snapshot** — Daily portfolio snapshot saved automatically
+### 🧪 Automated QA Testing (Vitest & Docker)
+- Integrated heavily with `vitest` for core logic testing (`portfolioCalculator.js`).
+- Complete isolated testing via Docker environments without dirtying host machines.
+- Verifies Crypto (`USDT` chained conversion), FMarket Funds, VNĐ Cash pooling logic strictly!
 
 ---
 
-## 🏗️ Tech Stack
+## 🏗️ Technology Stack
 
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 18, Vite 5, Lucide Icons |
-| **Styling** | Vanilla CSS (Custom Design System — Glassmorphism) |
+| **Logic Testing**| Vitest, @vitest/coverage-v8 |
 | **Database** | Firebase Firestore (Realtime) |
-| **API Proxy** | Python FastAPI + vnstock |
-| **Charts** | Custom SVG (LineChart, DonutChart) |
-| **Container** | Docker + Docker Compose |
-| **Font** | Inter (Google Fonts) |
+| **Backend Proxy**| Python FastAPI + Uvicorn |
+| **Data APIs** | `vnstock >=3.0.0` (Community Keys), `CoinGecko` |
+| **Container** | Docker Engine & Docker Compose |
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Setup & Configuration
 
 ### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed
-- A Firebase project with Firestore enabled
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed & Running
+- Firebase API Keys
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/your-username/portfolio_assets_management.git
-cd portfolio_assets_management
-```
-
-### 2. Configure environment
-
+### 1. Environment Configuration (`.env`)
 Create a `.env` file in the project root:
 
 ```env
@@ -88,32 +65,31 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 
-# vnstock API Proxy
+# vnstock API Proxy & Rate Limiting Guard
 VNSTOCK_API_ENABLED=true
 LOG_LEVEL=INFO
-VNSTOCK_API_KEY=your_vnstock_api_key
 
+# Third Party APIs
+VNSTOCK_API_KEY=your_vnstock_community_key
 COINGECKO_API_KEY=your_coingecko_api_key
 ```
 
-### 3. Start the application
+### 2. Start the App via Docker
+Build and launch the complete stack immediately:
+```bash
+docker-compose up -d --build
+```
+- **React App**: [http://localhost:5173](http://localhost:5173)
+- **FastAPI Core**: [http://localhost:8000](http://localhost:8000)
+
+### 3. Run Automated Logic Tests
+The project features an automated QA Pipeline configured via Vitest directly inside the Docker `webapp` container to preserve your local Host ecosystem!
 
 ```bash
-docker-compose up --build
+docker-compose exec webapp npm run test
 ```
 
-### 4. Open the app
-
-- **Frontend**: [http://localhost:5173](http://localhost:5173)
-- **API Proxy**: [http://localhost:8000](http://localhost:8000)
-- **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI)
-
-### 5. First-time setup
-
-1. Click **"Import CSV"** in the sidebar to load your transaction history
-2. Go to **Quỹ Đầu tư** → Deposit initial cash into each fund
-3. Go to **Bảng giá** → Enter today's market prices
-4. The dashboard will auto-calculate everything! 🎉
+*This verifies your USD conversion scalings, Portfolio NAV logic, and VNĐ mapping using dynamic mock datasets!*
 
 ---
 
@@ -121,75 +97,38 @@ docker-compose up --build
 
 ```
 ├── src/
-│   ├── App.jsx                      # Main app (6 tabs)
-│   ├── index.css                    # Premium design system
-│   ├── firebase.js                  # Firebase config
-│   ├── main.jsx                     # Entry point
+│   ├── App.jsx                      # Main app structure
+│   ├── firebase.js                  # Firebase configurations
 │   ├── components/
-│   │   ├── AddTransactionModal.jsx  # Transaction form (fund-linked)
-│   │   ├── AssetAllocationChart.jsx # SVG donut chart
-│   │   ├── FundManager.jsx          # Fund management
-│   │   ├── LiabilitiesManager.jsx   # Debt tracking
-│   │   ├── NetWorthExternalManager.jsx
-│   │   ├── PriceManager.jsx         # Daily price entry
-│   │   ├── RebalanceSettings.jsx    # Target weights editor
-│   │   ├── TransactionLog.jsx       # Transaction history
-│   │   └── charts/
-│   │       └── LineChart.jsx        # SVG line chart
-│   ├── services/
-│   │   └── firestoreService.js      # Firebase CRUD (8 collections)
+│   │   ├── PriceManager.jsx         # Auto-fetch via APIs 
+│   │   └── ...                      
 │   ├── utils/
-│   │   ├── formatters.js            # Number/currency formatting
-│   │   └── portfolioCalculator.js   # Calculation engine
-│   └── scripts/
-│       └── importCSV.js             # CSV data importer
+│   │   ├── portfolioCalculator.js   # Advanced calculation engine
+│   │   └── __tests__/               # Vitest Mock Datasets & QA Test Suites
 ├── api/
-│   ├── main.py                      # FastAPI + vnstock proxy
-│   ├── requirements.txt
+│   ├── main.py                      # Python FastAPI (vnstock + Caching logic)
+│   ├── requirements.txt             # python-dotenv, fastapi, vnstock
 │   └── Dockerfile
-├── docker-compose.yml               # 2 services: webapp + api
-├── Dockerfile                       # Frontend container
-├── .env                             # Environment variables
-└── package.json
+├── docker-compose.yml               # WebApp + API orchestration
+├── README.md      
+└── package.json                     # Vitest definitions
 ```
 
 ---
 
-## 🗄️ Firebase Collections
+## 🗄️ Firebase Collections Roadmap
 
 | Collection | Purpose |
 |-----------|---------|
-| `transactions` | Buy/Sell/Deposit transaction history |
-| `externalAssets` | Assets outside portfolio (bank, gold, TOPI) |
+| `transactions` | Buy/Sell/Deposit transactions |
+| `externalAssets` | Assets outside portfolio |
 | `liabilities` | Debts and loans |
-| `funds` | Investment fund definitions + cash balance |
-| `dailySnapshots` | Daily portfolio/net worth snapshots |
-| `dailyPrices` | Manual market price entries per day |
-| `marketPrices` | Current market prices (API-updated) |
-| `settings` | Rebalance target weights |
-
----
-
-## 🔧 Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VNSTOCK_API_ENABLED` | `true` | Enable/disable the vnstock API proxy |
-| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
-
-Set `VNSTOCK_API_ENABLED=false` in `.env` to disable the API proxy without shutting down the service.
-
-API logs are stored at `./logs/vnstock_api.log`.
-
----
-
-## 📄 License
-
-MIT License — See [LICENSE](LICENSE) for details.
+| `funds` | Virtual Investment divisions |
+| `dailySnapshots` | Daily history charts source |
 
 ---
 
 <p align="center">
-  <strong>🎨 A Vibe Coding Project</strong><br/>
-  <em>Built with AI-assisted development — where creativity meets automation</em>
+  <strong>🛡️ Coded by QATester Agent & Fullstack Agent</strong><br/>
+  <em>Built with AI-assisted development — Ensuring High Quality & Bulletproof Logic Execution!</em>
 </p>
