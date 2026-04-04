@@ -88,18 +88,29 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
     }
     setFetching(true);
     try {
-      // Fetch VN stock prices from our Python API proxy
-      const symbols = ['FUEVN100', 'FUEVFVND', 'VESAF', 'DCDS', 'DCBF', 'DCIP', 'VFF'];
-      const response = await fetch(`/api/prices/stocks?symbols=${symbols.join(',')}`);
+      // Fetch VN stock prices and CMC Crypto prices from our Python API proxy
+      const symbols = ['FUEVN100', 'FUEVFVND', 'VESAF', 'DCDS', 'DCBF', 'DCIP', 'VFF', 'PAXG', 'BTC'];
+      const response = await fetch(`/api/prices/stocks?symbols=${symbols.join(',')}&target_date=${selectedDate}`);
       if (!response.ok) throw new Error('API không phản hồi');
       const data = await response.json();
 
       const newPrices = { ...prices };
+      let hasRateLimit = false;
       data.forEach(item => {
+        // Prevent accidental overwrites of the USDT exchange rate 
+        if (item.symbol === 'USDT') return;
+        if (item.error && item.error.includes('RATE_LIMIT_ERROR')) {
+            hasRateLimit = true;
+        }
         if (item.price) newPrices[item.symbol] = item.price;
       });
       setPrices(newPrices);
-      alert('✅ Đã lấy giá từ vnstock API');
+      
+      if (hasRateLimit) {
+          alert('⚠️ Cảnh báo: API VnStock đã đạt giới hạn tải dữ liệu (Rate Limit). Các mã bị thiếu sẽ được bỏ qua. Vui lòng đợi 1 phút và thử lại.');
+      } else {
+          alert('✅ Đã lấy giá tự động từ định tuyến API Proxy (vnstock & CoinGecko)!');
+      }
     } catch (err) {
       console.error(err);
       alert('❌ Lỗi khi gọi API: ' + err.message);

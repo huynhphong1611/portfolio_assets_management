@@ -91,6 +91,9 @@ VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 # vnstock API Proxy
 VNSTOCK_API_ENABLED=true
 LOG_LEVEL=INFO
+VNSTOCK_API_KEY=your_vnstock_api_key
+
+COINGECKO_API_KEY=your_coingecko_api_key
 ```
 
 ### 3. Start the application
