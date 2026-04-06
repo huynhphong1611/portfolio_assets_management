@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem('portfolioUser');
     if (savedUser) {
       const user = JSON.parse(savedUser);
-      setServiceUserId(user.id);
+      setServiceUserId(user.id, user.type);
       setCurrentUser(user);
       setLoading(false);
     } else {
@@ -38,7 +38,7 @@ export function AuthProvider({ children }) {
       firebaseUnsub = onAuthStateChanged(auth, (fbUser) => {
         if (fbUser) {
           const u = { id: fbUser.uid, username: fbUser.email, type: 'firebase' };
-          setServiceUserId(u.id);
+          setServiceUserId(u.id, u.type);
           setCurrentUser(u);
         } else {
           setCurrentUser(null);
@@ -79,7 +79,7 @@ export function AuthProvider({ children }) {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const u = { id: userCredential.user.uid, username: userCredential.user.email, type: 'firebase' };
     setCurrentUser(u);
-    setServiceUserId(u.id);
+    setServiceUserId(u.id, u.type);
     return true;
   };
 
@@ -87,7 +87,7 @@ export function AuthProvider({ children }) {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const u = { id: userCredential.user.uid, username: userCredential.user.email, type: 'firebase' };
     setCurrentUser(u);
-    setServiceUserId(u.id);
+    setServiceUserId(u.id, u.type);
     return true;
   };
 

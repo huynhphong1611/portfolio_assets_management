@@ -10,9 +10,11 @@ import { db } from "../firebase";
 // ============================================================
 
 let currentUserId = null;
+let currentUserType = null;
 
-export function setServiceUserId(userId) {
+export function setServiceUserId(userId, type = 'guest') {
   currentUserId = userId;
+  currentUserType = type;
 }
 
 export function getServiceUserId() {
@@ -26,8 +28,8 @@ export async function authenticateUser(username, passwordHash) {
   if (snap.empty) return null;
   const userDoc = snap.docs[0];
   if (userDoc.data().passwordHash === passwordHash) {
-    const userData = { id: userDoc.id, ...userDoc.data() };
-    setServiceUserId(userData.id);
+    const userData = { id: userDoc.id, ...userDoc.data(), type: 'guest' };
+    setServiceUserId(userData.id, userData.type);
     return userData;
   }
   return null;
@@ -44,18 +46,20 @@ export async function registerUser(username, passwordHash) {
     passwordHash,
     createdAt: serverTimestamp()
   });
-  setServiceUserId(docRef.id);
-  return { id: docRef.id, username };
+  setServiceUserId(docRef.id, 'guest');
+  return { id: docRef.id, username, type: 'guest' };
 }
 
 // Helpers for Sub-collections
 const userCol = (name) => {
   if (!currentUserId) throw new Error("Not authenticated.");
-  return collection(db, "users", currentUserId, name);
+  const root = currentUserType === 'firebase' ? "system_users" : "guest_users";
+  return collection(db, root, currentUserId, name);
 };
 const userDocRef = (name, id) => {
   if (!currentUserId) throw new Error("Not authenticated.");
-  return doc(db, "users", currentUserId, name, id);
+  const root = currentUserType === 'firebase' ? "system_users" : "guest_users";
+  return doc(db, root, currentUserId, name, id);
 };
 
 // ============================================================

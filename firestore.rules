@@ -1,8 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
+    
+    // Khách dùng Custom SHA256 (Mở cho phép đọc ghi thoải mái)
+    match /users/{userId} {
       allow read, write: if true;
+    }
+    match /guest_users/{userId}/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Tài khoản Chính thức Firebase (Bảo mật 100%)
+    match /system_users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Dữ liệu chung
+    match /marketPrices/{document=**} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

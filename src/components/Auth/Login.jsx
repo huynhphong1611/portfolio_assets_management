@@ -75,7 +75,8 @@ export default function Login() {
         
         for (const rootDoc of rootSnap.docs) {
           // Ghi vào sub-collection của user hiện tại
-          const targetRef = doc(db, "users", currentUser.id, colName, rootDoc.id);
+          const rootNode = currentUser.type === 'firebase' ? 'system_users' : 'guest_users';
+          const targetRef = doc(db, rootNode, currentUser.id, colName, rootDoc.id);
           await setDoc(targetRef, rootDoc.data());
           copiedCount++;
         }
