@@ -113,20 +113,27 @@ export function calculatePortfolio(holdings, marketPrices = {}) {
 
   return holdings.map(h => {
     const market = marketPrices[h.ticker] || {};
-    const marketPrice = market.price || h.avgCost;
+    let marketPrice = market.price;
     
     let actualValue;
     if (h.ticker === 'VNĐ') {
       actualValue = h.qty;
+      marketPrice = 1;
     } else if (h.ticker === 'USDT') {
       // USDT itself: qty * exchangeRate
       actualValue = h.qty * usdtRate;
+      marketPrice = usdtRate;
     } else if (h.currency === 'USDT' || h.assetClass === 'Tài sản mã hóa') {
       // Crypto/USDT-priced assets: qty * price_in_USDT * USDT_rate
-      const priceInUsdt = market.price || h.avgCost;
-      actualValue = h.qty * priceInUsdt * usdtRate;
+      if (market.price) {
+        actualValue = h.qty * market.price * usdtRate;
+      } else {
+        actualValue = h.qty * h.avgCost; // Fallback: avgCost is already in VND
+        marketPrice = h.avgCost / usdtRate; // Show fallback market price in USDT for consistency
+      }
     } else {
       // VND-priced assets: qty * price_in_VND
+      marketPrice = market.price || h.avgCost;
       actualValue = h.qty * marketPrice;
     }
 

@@ -6,13 +6,67 @@ import {
 import { db } from "../firebase";
 
 // ============================================================
+// AUTHENTICATION & USER MANAGEMENT
+// ============================================================
+
+let currentUserId = null;
+
+export function setServiceUserId(userId) {
+  currentUserId = userId;
+}
+
+export function getServiceUserId() {
+  return currentUserId;
+}
+
+export async function authenticateUser(username, passwordHash) {
+  const usersCol = collection(db, "users");
+  const q = query(usersCol, where("username", "==", username), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const userDoc = snap.docs[0];
+  if (userDoc.data().passwordHash === passwordHash) {
+    const userData = { id: userDoc.id, ...userDoc.data() };
+    setServiceUserId(userData.id);
+    return userData;
+  }
+  return null;
+}
+
+export async function registerUser(username, passwordHash) {
+  const usersCol = collection(db, "users");
+  const q = query(usersCol, where("username", "==", username), limit(1));
+  const snap = await getDocs(q);
+  if (!snap.empty) throw new Error("Tên đăng nhập đã tồn tại.");
+  
+  const docRef = await addDoc(usersCol, {
+    username,
+    passwordHash,
+    createdAt: serverTimestamp()
+  });
+  setServiceUserId(docRef.id);
+  return { id: docRef.id, username };
+}
+
+// Helpers for Sub-collections
+const userCol = (name) => {
+  if (!currentUserId) throw new Error("Not authenticated.");
+  return collection(db, "users", currentUserId, name);
+};
+const userDocRef = (name, id) => {
+  if (!currentUserId) throw new Error("Not authenticated.");
+  return doc(db, "users", currentUserId, name, id);
+};
+
+// ============================================================
 // TRANSACTIONS COLLECTION
 // ============================================================
 
 const TRANSACTIONS_COL = "transactions";
 
 export function subscribeTransactions(callback) {
-  const q = query(collection(db, TRANSACTIONS_COL), orderBy("date", "desc"));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(TRANSACTIONS_COL), orderBy("date", "desc"));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   }, (error) => {
@@ -22,22 +76,22 @@ export function subscribeTransactions(callback) {
 }
 
 export async function addTransaction(data) {
-  const docRef = await addDoc(collection(db, TRANSACTIONS_COL), {
+  const docRef = await addDoc(userCol(TRANSACTIONS_COL), {
     ...data, createdAt: serverTimestamp()
   });
   return docRef.id;
 }
 
 export async function updateTransaction(id, data) {
-  await updateDoc(doc(db, TRANSACTIONS_COL, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(userDocRef(TRANSACTIONS_COL, id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteTransaction(id) {
-  await deleteDoc(doc(db, TRANSACTIONS_COL, id));
+  await deleteDoc(userDocRef(TRANSACTIONS_COL, id));
 }
 
 export async function getTransactions() {
-  const q = query(collection(db, TRANSACTIONS_COL), orderBy("date", "desc"));
+  const q = query(userCol(TRANSACTIONS_COL), orderBy("date", "desc"));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 }
@@ -46,7 +100,6 @@ export async function batchImportTransactions(transactions) {
   return Promise.all(transactions.map(t => addTransaction(t)));
 }
 
-
 // ============================================================
 // EXTERNAL ASSETS COLLECTION
 // ============================================================
@@ -54,36 +107,35 @@ export async function batchImportTransactions(transactions) {
 const EXTERNAL_ASSETS_COL = "externalAssets";
 
 export function subscribeExternalAssets(callback) {
-  const q = query(collection(db, EXTERNAL_ASSETS_COL), orderBy("name", "asc"));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(EXTERNAL_ASSETS_COL), orderBy("name", "asc"));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (error) => {
-    console.error("Error subscribing to external assets:", error);
+    console.error("Error subscribing to msg:", error);
     callback([]);
   });
 }
 
 export async function addExternalAsset(data) {
-  return addDoc(collection(db, EXTERNAL_ASSETS_COL), { ...data, createdAt: serverTimestamp() });
+  return addDoc(userCol(EXTERNAL_ASSETS_COL), { ...data, createdAt: serverTimestamp() });
 }
 
 export async function updateExternalAsset(id, data) {
-  await updateDoc(doc(db, EXTERNAL_ASSETS_COL, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(userDocRef(EXTERNAL_ASSETS_COL, id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteExternalAsset(id) {
-  await deleteDoc(doc(db, EXTERNAL_ASSETS_COL, id));
+  await deleteDoc(userDocRef(EXTERNAL_ASSETS_COL, id));
 }
-
 
 // ============================================================
 // REBALANCE TARGETS
 // ============================================================
 
-const REBALANCE_TARGETS_DOC = "settings/rebalanceTargets";
-
 export function subscribeRebalanceTargets(callback) {
-  return onSnapshot(doc(db, REBALANCE_TARGETS_DOC), (snapshot) => {
+  if (!currentUserId) return () => {};
+  return onSnapshot(userDocRef("settings", "rebalanceTargets"), (snapshot) => {
     if (snapshot.exists()) {
       const raw = snapshot.data();
       const targets = {};
@@ -103,12 +155,12 @@ export function subscribeRebalanceTargets(callback) {
 }
 
 export async function saveRebalanceTargets(targets) {
-  await setDoc(doc(db, REBALANCE_TARGETS_DOC), { ...targets, updatedAt: serverTimestamp() });
+  await setDoc(userDocRef("settings", "rebalanceTargets"), { ...targets, updatedAt: serverTimestamp() });
 }
 
 
 // ============================================================
-// MARKET PRICES COLLECTION
+// MARKET PRICES COLLECTION (GLOBAL)
 // ============================================================
 
 const MARKET_PRICES_COL = "marketPrices";
@@ -141,7 +193,8 @@ export async function batchUpdateMarketPrices(pricesMap) {
 const LIABILITIES_COL = "liabilities";
 
 export function subscribeLiabilities(callback) {
-  const q = query(collection(db, LIABILITIES_COL), orderBy("name", "asc"));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(LIABILITIES_COL), orderBy("name", "asc"));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (error) => {
@@ -151,15 +204,15 @@ export function subscribeLiabilities(callback) {
 }
 
 export async function addLiability(data) {
-  return addDoc(collection(db, LIABILITIES_COL), { ...data, createdAt: serverTimestamp() });
+  return addDoc(userCol(LIABILITIES_COL), { ...data, createdAt: serverTimestamp() });
 }
 
 export async function updateLiability(id, data) {
-  await updateDoc(doc(db, LIABILITIES_COL, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(userDocRef(LIABILITIES_COL, id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteLiability(id) {
-  await deleteDoc(doc(db, LIABILITIES_COL, id));
+  await deleteDoc(userDocRef(LIABILITIES_COL, id));
 }
 
 
@@ -170,7 +223,8 @@ export async function deleteLiability(id) {
 const SNAPSHOTS_COL = "dailySnapshots";
 
 export function subscribeSnapshots(callback) {
-  const q = query(collection(db, SNAPSHOTS_COL), orderBy("date", "asc"));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(SNAPSHOTS_COL), orderBy("date", "asc"));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (error) => {
@@ -180,20 +234,17 @@ export function subscribeSnapshots(callback) {
 }
 
 export async function saveSnapshot(dateStr, data) {
-  // Use date string as document ID for easy lookup
-  const docRef = doc(db, SNAPSHOTS_COL, dateStr);
-  await setDoc(docRef, { ...data, date: dateStr, updatedAt: serverTimestamp() });
+  await setDoc(userDocRef(SNAPSHOTS_COL, dateStr), { ...data, date: dateStr, updatedAt: serverTimestamp() });
 }
 
 export async function getSnapshot(dateStr) {
-  const docRef = doc(db, SNAPSHOTS_COL, dateStr);
-  const snap = await getDoc(docRef);
+  const snap = await getDoc(userDocRef(SNAPSHOTS_COL, dateStr));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
 export async function getSnapshotsRange(startDate, endDate) {
   const q = query(
-    collection(db, SNAPSHOTS_COL),
+    userCol(SNAPSHOTS_COL),
     where("date", ">=", startDate),
     where("date", "<=", endDate),
     orderBy("date", "asc")
@@ -210,7 +261,8 @@ export async function getSnapshotsRange(startDate, endDate) {
 const DAILY_PRICES_COL = "dailyPrices";
 
 export function subscribeDailyPrices(callback) {
-  const q = query(collection(db, DAILY_PRICES_COL), orderBy("date", "desc"), limit(30));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(DAILY_PRICES_COL), orderBy("date", "desc"), limit(30));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (error) => {
@@ -220,18 +272,16 @@ export function subscribeDailyPrices(callback) {
 }
 
 export async function saveDailyPrices(dateStr, prices) {
-  const docRef = doc(db, DAILY_PRICES_COL, dateStr);
-  await setDoc(docRef, { date: dateStr, prices, updatedAt: serverTimestamp() });
+  await setDoc(userDocRef(DAILY_PRICES_COL, dateStr), { date: dateStr, prices, updatedAt: serverTimestamp() });
 }
 
 export async function getDailyPrices(dateStr) {
-  const docRef = doc(db, DAILY_PRICES_COL, dateStr);
-  const snap = await getDoc(docRef);
+  const snap = await getDoc(userDocRef(DAILY_PRICES_COL, dateStr));
   return snap.exists() ? snap.data().prices : null;
 }
 
 export async function getLatestDailyPrices() {
-  const q = query(collection(db, DAILY_PRICES_COL), orderBy("date", "desc"), limit(1));
+  const q = query(userCol(DAILY_PRICES_COL), orderBy("date", "desc"), limit(1));
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
   const data = snapshot.docs[0].data();
@@ -246,7 +296,8 @@ export async function getLatestDailyPrices() {
 const FUNDS_COL = "funds";
 
 export function subscribeFunds(callback) {
-  const q = query(collection(db, FUNDS_COL), orderBy("name", "asc"));
+  if (!currentUserId) return () => {};
+  const q = query(userCol(FUNDS_COL), orderBy("name", "asc"));
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
   }, (error) => {
@@ -256,22 +307,20 @@ export function subscribeFunds(callback) {
 }
 
 export async function addFund(data) {
-  return addDoc(collection(db, FUNDS_COL), { ...data, createdAt: serverTimestamp() });
+  return addDoc(userCol(FUNDS_COL), { ...data, createdAt: serverTimestamp() });
 }
 
 export async function updateFund(id, data) {
-  await updateDoc(doc(db, FUNDS_COL, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(userDocRef(FUNDS_COL, id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteFund(id) {
-  await deleteDoc(doc(db, FUNDS_COL, id));
+  await deleteDoc(userDocRef(FUNDS_COL, id));
 }
 
-/**
- * Initialize default funds if none exist
- */
 export async function initializeDefaultFunds() {
-  const snapshot = await getDocs(collection(db, FUNDS_COL));
+  if (!currentUserId) return false;
+  const snapshot = await getDocs(userCol(FUNDS_COL));
   if (snapshot.empty) {
     const defaults = [
       { name: "Quỹ Trái phiếu", assetClass: "Trái phiếu", cashBalance: 0, description: "Đầu tư trái phiếu và chứng chỉ quỹ TP", color: "#3b82f6" },

@@ -2,8 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   LayoutDashboard, Briefcase, ArrowRightLeft, Scale, TrendingUp, TrendingDown,
   Wallet, PieChart, Activity, Menu, X, PlusCircle, RefreshCw, Search,
-  Upload, Loader2, Landmark, BarChart3, Camera, AlertTriangle
+  Upload, Loader2, Landmark, BarChart3, Camera, AlertTriangle, LogOut
 } from 'lucide-react';
+
+import { useAuth } from './contexts/AuthContext.jsx';
+import Login from './components/Auth/Login.jsx';
 
 import { formatVND, formatNum, formatPercent } from './utils/formatters.js';
 import {
@@ -33,6 +36,7 @@ import LineChart from './components/charts/LineChart.jsx';
 // ============================================================
 
 export default function App() {
+  const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -55,6 +59,8 @@ export default function App() {
   // ============================================================
 
   useEffect(() => {
+    if (!currentUser) return;
+
     setLoading(true);
     let loadCount = 0;
     const totalSubs = 8;
@@ -76,14 +82,14 @@ export default function App() {
 
     const timer = setTimeout(() => setLoading(false), 6000);
     return () => { unsubs.forEach(fn => fn()); clearTimeout(timer); };
-  }, []);
+  }, [currentUser]);
 
   // ============================================================
   // AUTO SNAPSHOT — once per day on app load
   // ============================================================
 
   useEffect(() => {
-    if (loading || transactions.length === 0 || funds.length === 0) return;
+    if (!currentUser || loading || transactions.length === 0 || funds.length === 0) return;
 
     const today = new Date().toISOString().slice(0, 10);
     const alreadyExists = snapshots.some(s => s.date === today);
@@ -177,8 +183,12 @@ export default function App() {
   ];
 
   // ============================================================
-  // LOADING
+  // LOADING & AUTH
   // ============================================================
+
+  if (!currentUser) {
+    return <Login />;
+  }
 
   if (loading) {
     return (
@@ -220,6 +230,13 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
+          <div style={{ padding: '0.2rem 1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            User: <strong style={{ color: 'var(--text-main)' }}>{currentUser.username}</strong>
+          </div>
+          <button className="btn-glass import-btn" onClick={logout} style={{ color: 'var(--color-rose-400)', borderColor: 'rgba(244, 63, 94, 0.2)', marginBottom: '0.5rem' }}>
+            <LogOut size={16} /> Đăng xuất
+          </button>
+
           {transactions.length === 0 && (
             <button className="btn-glass import-btn" onClick={handleImportCSV} disabled={importing}>
               {importing ? <><Loader2 size={16} className="spin" /> Đang import...</> : <><Upload size={16} /> Import CSV</>}
