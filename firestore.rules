@@ -1,22 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Khách dùng Custom SHA256 (Mở cho phép đọc ghi thoải mái)
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-    match /guest_users/{userId}/{document=**} {
-      allow read, write: if true;
+
+    // ─── DENY ALL BY DEFAULT ───
+    // Client SDK (browser) KHÔNG ĐƯỢC truy cập bất cứ gì
+    // Backend Admin SDK tự động bypass rules, vẫn hoạt động bình thường
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Tài khoản Chính thức Firebase (Bảo mật 100%)
-    match /system_users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // ─── FIREBASE AUTH USERS ───
+    // Chỉ user đã đăng nhập Firebase Auth mới truy cập data của mình
+    match /system_users/{userId}/{subcollection=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == userId;
     }
 
-    // Dữ liệu chung
-    match /marketPrices/{document=**} {
+    // ─── MARKET PRICES (Public read-only) ───
+    match /marketPrices/{ticker} {
       allow read: if true;
       allow write: if false;
     }
