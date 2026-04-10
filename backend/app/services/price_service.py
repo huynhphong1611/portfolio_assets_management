@@ -364,3 +364,51 @@ def get_fund_listing(fund_type: str = "") -> list:
             'nav_change_1m', 'nav_change_3m', 'nav_change_12m', 'nav_update_at']
     available_cols = [c for c in cols if c in df.columns]
     return df[available_cols].to_dict(orient='records')
+
+
+def get_benchmark_history(days: int = 90) -> dict:
+    """Get daily historical data for VNINDEX and BTC/VND from N days ago."""
+    from datetime import datetime, timedelta
+    
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    
+    end_date_str = end_date.strftime("%Y-%m-%d")
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    
+    results = {"VNINDEX": [], "BTC": []}
+    
+    # 1. Fetch VNINDEX
+    try:
+        from vnstock import Quote
+        q = Quote(symbol="VNINDEX")
+        df = q.history(start=start_date_str, end=end_date_str, interval="1D")
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                results["VNINDEX"].append({"date": str(row["time"]).split(" ")[0], "close": float(row["close"])})
+    except Exception as e:
+        logger.error(f"Error fetching VNINDEX history: {e}")
+        
+    # 2. Fetch BTC (USD)
+    try:
+        import requests
+        url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}"
+        headers = {}
+        if settings.COINGECKO_API_KEY:
+            headers["x-cg-demo-api-key"] = settings.COINGECKO_API_KEY
+            
+        resp = requests.get(url, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json().get("prices", [])
+            daily_btc = {}
+            for pt in data:
+                ts = pt[0] / 1000.0
+                dt_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+                daily_btc[dt_str] = pt[1]
+                
+            for dt_str in sorted(daily_btc.keys()):
+                results["BTC"].append({"date": dt_str, "close": float(daily_btc[dt_str])})
+    except Exception as e:
+        logger.error(f"Error fetching BTC history: {e}")
+        
+    return results

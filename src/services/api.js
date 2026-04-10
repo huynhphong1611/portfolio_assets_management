@@ -211,6 +211,10 @@ export async function apiGetFundListing(fundType = '') {
   return request(url); // Returns array directly
 }
 
+export async function apiGetBenchmarkHistory(days = 90) {
+  return requestData(`/prices/benchmarks/history?days=${days}`);
+}
+
 // ── Snapshots API ──
 
 export async function apiGetSnapshots() {

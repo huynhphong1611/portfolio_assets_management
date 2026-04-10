@@ -130,3 +130,9 @@ async def list_available_funds(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/benchmarks/history", response_model=APIResponse)
+async def get_benchmarks(days: int = Query(90, description="Number of days")):
+    """Get history data for benchmarks (VNINDEX, BTC)."""
+    data = price_service.get_benchmark_history(days)
+    return APIResponse(data=data)

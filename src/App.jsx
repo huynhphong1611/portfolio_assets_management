@@ -30,6 +30,7 @@ import LiabilitiesManager from './components/LiabilitiesManager.jsx';
 import FundManager from './components/FundManager.jsx';
 import PriceManager from './components/PriceManager.jsx';
 import LineChart from './components/charts/LineChart.jsx';
+import CumulativePerformanceChart from './components/CumulativePerformanceChart.jsx';
 
 // ============================================================
 // MAIN APP
@@ -458,8 +459,13 @@ export default function App() {
                 {/* Portfolio Growth Chart */}
                 {portfolioGrowthData.length > 0 && (
                   <div className="glass-card section-card">
-                    <LineChart datasets={portfolioGrowthData} height={300} title="Tăng trưởng Danh mục theo ngày" />
+                    <LineChart datasets={portfolioGrowthData} height={300} title="Tăng trưởng Danh mục (VNĐ)" />
                   </div>
+                )}
+
+                {/* Cumulative Performance vs Benchmarks */}
+                {snapshots.length > 0 && (
+                  <CumulativePerformanceChart snapshots={snapshots} />
                 )}
 
                 {/* Holdings Table */}

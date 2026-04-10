@@ -29,7 +29,8 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
 
     // Add 10% padding to y range
     const yRange = yMax - yMin || 1;
-    yMin = Math.max(0, yMin - yRange * 0.1);
+    const trueMin = yMin - yRange * 0.1;
+    yMin = yMin >= 0 && trueMin < 0 ? 0 : trueMin;
     yMax = yMax + yRange * 0.1;
 
     const xScale = (i) => padding.left + (i / Math.max(allX.length - 1, 1)) * chartW;
@@ -52,9 +53,13 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
 
     // Build paths
     const paths = datasets.map(ds => {
-      const points = ds.data.map((d, i) => ({ x: xScale(i), y: yScale(d.y), val: d.y, label: d.x }));
+      const points = ds.data.map((d, i) => ({ x: xScale(i), y: yScale(d.y), val: d.y, label: d.x, rawStr: d.rawStr }));
       const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-      const areaPath = linePath + ` L${points[points.length - 1].x},${padding.top + chartH} L${points[0].x},${padding.top + chartH} Z`;
+      
+      // Fix area path for zero-line when dealing with negative values
+      const zeroY = yScale(Math.max(0, yMin)); 
+      const areaPath = linePath + ` L${points[points.length - 1].x},${zeroY} L${points[0].x},${zeroY} Z`;
+      
       return { ...ds, points, linePath, areaPath };
     });
 
@@ -175,7 +180,10 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
             <div key={i} className="chart-tooltip-row">
               <span className="chart-tooltip-dot" style={{ background: processed.paths[i].color }}></span>
               <span className="chart-tooltip-label">{processed.paths[i].label}</span>
-              <span className="chart-tooltip-value">{formatYTick(pt.val)}</span>
+              <span className="chart-tooltip-value">
+                {pt.rawStr && <span style={{ color: 'var(--text-color)', marginRight: '6px', fontSize: '11px' }}>{pt.rawStr}</span>}
+                <strong>{formatYTick(pt.val)}</strong>
+              </span>
             </div>
           ))}
         </div>
