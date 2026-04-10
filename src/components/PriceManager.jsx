@@ -41,7 +41,9 @@ function buildPriceItems(transactions = []) {
 
     const assetClass = tx.assetClass || '';
     const category = ASSET_CLASS_TO_CATEGORY[assetClass] || 'Khác';
-    const isCrypto = assetClass === 'Tài sản mã hóa';
+    // Specific gold-backed tokens that trade on crypto exchanges (priced in USDT)
+    const CRYPTO_GOLD_TICKERS = new Set(['PAXG', 'XAUT']);
+    const isCrypto = assetClass === 'Tài sản mã hóa' || CRYPTO_GOLD_TICKERS.has(ticker);
 
     tickerMap[ticker] = {
       key: ticker,

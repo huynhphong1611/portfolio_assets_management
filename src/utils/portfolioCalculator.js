@@ -110,6 +110,8 @@ export function calculateHoldings(transactions) {
 export function calculatePortfolio(holdings, marketPrices = {}) {
   // Get global USDT exchange rate
   const usdtRate = marketPrices['USDT']?.exchangeRate || marketPrices['USDT']?.price || 1;
+  // Gold-backed tokens that trade on crypto exchanges (priced in USDT)
+  const CRYPTO_GOLD_TICKERS = new Set(['PAXG', 'XAUT']);
 
   return holdings.map(h => {
     const market = marketPrices[h.ticker] || {};
@@ -123,13 +125,14 @@ export function calculatePortfolio(holdings, marketPrices = {}) {
       // USDT itself: qty * exchangeRate
       actualValue = h.qty * usdtRate;
       marketPrice = usdtRate;
-    } else if (h.currency === 'USDT' || h.assetClass === 'Tài sản mã hóa') {
+    } else if (h.currency === 'USDT' || h.assetClass === 'Tài sản mã hóa' || CRYPTO_GOLD_TICKERS.has(h.ticker)) {
       // Crypto/USDT-priced assets: qty * price_in_USDT * USDT_rate
+      // Also includes PAXG, XAUT gold tokens that are priced in USDT
       if (market.price) {
         actualValue = h.qty * market.price * usdtRate;
       } else {
         actualValue = h.qty * h.avgCost; // Fallback: avgCost is already in VND
-        marketPrice = h.avgCost / usdtRate; // Show fallback market price in USDT for consistency
+        marketPrice = h.avgCost / usdtRate;
       }
     } else {
       // VND-priced assets: qty * price_in_VND
