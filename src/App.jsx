@@ -8,7 +8,7 @@ import {
 import { useAuth } from './contexts/AuthContext.jsx';
 import Login from './components/Auth/Login.jsx';
 
-import { formatVND, formatNum, formatPercent } from './utils/formatters.js';
+import { formatVND, formatNum, formatPercent, formatQty } from './utils/formatters.js';
 import {
   calculateHoldings, calculatePortfolio, calculateNetWorth,
   calculateRebalance, calculateTotalPnL, generateSnapshot
@@ -164,10 +164,18 @@ export default function App() {
       if (!classMap[p.assetClass]) classMap[p.assetClass] = 0;
       classMap[p.assetClass] += p.actualValue;
     });
+
+    // Include remaining cash from all funds into "Tiền mặt VNĐ"
+    const totalFundCash = funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0);
+    if (totalFundCash > 0) {
+      if (!classMap['Tiền mặt VNĐ']) classMap['Tiền mặt VNĐ'] = 0;
+      classMap['Tiền mặt VNĐ'] += totalFundCash;
+    }
+
     return Object.entries(classMap)
       .filter(([, v]) => v > 0)
       .map(([label, value], i) => ({ label, value, color: COLORS[i % COLORS.length] }));
-  }, [portfolio]);
+  }, [portfolio, funds]);
 
   // ============================================================
   // HANDLERS
@@ -240,7 +248,7 @@ export default function App() {
         <div className="sidebar-brand">
           <div className="sidebar-logo"><Activity size={22} /></div>
           <div>
-            <h1 className="sidebar-title">Portfolio V5</h1>
+            <h1 className="sidebar-title">Portfolio Management</h1>
             <p className="sidebar-subtitle">Quản lý tài sản cá nhân</p>
           </div>
         </div>
@@ -275,7 +283,7 @@ export default function App() {
       <div className="main-container">
         {/* MOBILE HEADER */}
         <header className="mobile-header">
-          <div className="mobile-header-brand"><Activity size={22} className="color-primary" /><h1>Portfolio V5</h1></div>
+          <div className="mobile-header-brand"><Activity size={22} className="color-primary" /><h1>Portfolio Management</h1></div>
           <button className="mobile-menu-btn" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -456,21 +464,21 @@ export default function App() {
                           .filter(p => p.ticker !== 'VNĐ')
                           .filter(p => !searchTerm || p.ticker.toLowerCase().includes(searchTerm.toLowerCase()))
                           .map((item, idx) => (
-                          <tr key={idx} className="table-row-hover">
-                            <td>
-                              <div className="td-ticker">{item.ticker}</div>
-                              <div className="td-meta">{item.assetClass}{item.fundName ? ` • ${item.fundName}` : ''}</div>
-                            </td>
-                            <td className="text-right td-mono">{formatNum(item.qty)}</td>
-                            <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
-                            <td className="text-right td-mono td-bold">{formatVND(item.actualValue)}</td>
-                            <td className="text-right">
-                              <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
-                                {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)} ({formatPercent(item.pnlPercent)})
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                            <tr key={idx} className="table-row-hover">
+                              <td>
+                                <div className="td-ticker">{item.ticker}</div>
+                                <div className="td-meta">{item.assetClass}{item.fundName ? ` • ${item.fundName}` : ''}</div>
+                              </td>
+                              <td className="text-right td-mono">{formatQty(item.qty, item.assetClass)}</td>
+                              <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
+                              <td className="text-right td-mono td-bold">{formatVND(item.actualValue)}</td>
+                              <td className="text-right">
+                                <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
+                                  {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)} ({formatPercent(item.pnlPercent)})
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </div>

@@ -69,6 +69,15 @@ class FundUpdate(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
 
+class FundCashHistoryCreate(BaseModel):
+    fundId: str
+    fundName: str
+    type: Literal["deposit", "withdraw"]
+    amount: float
+    balanceBefore: float
+    balanceAfter: float
+    note: Optional[str] = ""
+
 
 # ── External Asset ──
 

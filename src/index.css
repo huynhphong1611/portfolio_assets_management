@@ -2571,3 +2571,283 @@ body {
   background: var(--color-blue-50);
   border-radius: 4px;
 }
+
+
+/* ============================================================
+   36. FUND MANAGER
+   ============================================================ */
+
+.fund-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .fund-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .fund-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.fund-card {
+  padding: 20px;
+  transition: all var(--transition-smooth);
+}
+
+.fund-card--expanded {
+  grid-column: 1 / -1;
+}
+
+.fund-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.fund-card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fund-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  color: white;
+  flex-shrink: 0;
+}
+
+.fund-card-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fund-card-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.fund-card-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.fund-card-total {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.fund-card-pnl {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.fund-allocation-bar {
+  height: 4px;
+  background: var(--color-slate-100);
+  border-radius: var(--radius-full);
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.fund-allocation-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 600ms ease;
+}
+
+.fund-allocation-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-top: 4px;
+  text-align: right;
+}
+
+.fund-card-body {
+  margin-top: 20px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 16px;
+  animation: fadeIn 200ms ease-out;
+}
+
+.fund-cash-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-blue-50);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.fund-cash-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-blue-700);
+}
+
+.fund-cash-value {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--color-blue-700);
+}
+
+.fund-deposit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-slate-50);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  border: 1px solid var(--border-default);
+}
+
+.fund-deposit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.fund-deposit-btn {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.fund-history-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.fund-holdings {
+  margin-top: 16px;
+}
+
+.fund-holdings-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.fund-table {
+  font-size: 0.82rem;
+}
+
+.fund-table th,
+.fund-table td {
+  padding: 10px 12px;
+}
+
+.fund-chart-section {
+  margin-top: 16px;
+}
+
+
+/* ============================================================
+   37. FUND CASH HISTORY
+   ============================================================ */
+
+.fund-cash-history {
+  margin-top: 10px;
+  animation: fadeIn 200ms ease-out;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.fund-cash-history .data-table th {
+  font-size: 0.68rem;
+  padding: 8px 10px;
+  position: sticky;
+  top: 0;
+  background: var(--color-slate-50);
+  z-index: 1;
+}
+
+.fund-cash-history .data-table td {
+  padding: 8px 10px;
+  font-size: 0.78rem;
+}
+
+.fund-history-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 16px;
+  font-style: italic;
+}
+
+
+/* ============================================================
+   38. NOTES COLUMN
+   ============================================================ */
+
+.td-notes {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.notes-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.td-notes:hover {
+  white-space: normal;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.dot--debt { background: var(--color-rose-500); }
+
+
+/* ============================================================
+   39. ANIMATIONS
+   ============================================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

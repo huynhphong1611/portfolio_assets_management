@@ -120,6 +120,14 @@ export async function apiInitializeFunds() {
   return requestData('/funds/initialize', { method: 'POST' });
 }
 
+export async function apiGetFundCashHistory(fundId) {
+  return requestData(`/funds/${fundId}/cash-history`);
+}
+
+export async function apiAddFundCashHistory(fundId, data) {
+  return requestData(`/funds/${fundId}/cash-history`, { method: 'POST', body: data });
+}
+
 // ── External Assets API ──
 
 export async function apiGetExternalAssets() {

@@ -1,12 +1,28 @@
-import React, { useState, useMemo } from 'react';
-import { Landmark, PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
-import { apiUpdateFund } from '../services/api';
-import { formatVND, formatNum, formatPercent } from '../utils/formatters';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Landmark, PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Clock, FileText } from 'lucide-react';
+import { apiUpdateFund, apiGetFundCashHistory, apiAddFundCashHistory } from '../services/api';
+import { formatVND, formatNum, formatPercent, formatQty } from '../utils/formatters';
 import LineChart from './charts/LineChart';
 
 export default function FundManager({ funds = [], portfolio = [], transactions = [], snapshots = [], onUpdate }) {
   const [expandedFund, setExpandedFund] = useState(null);
-  const [depositForm, setDepositForm] = useState({ fundId: null, type: 'deposit', amount: '' });
+  const [depositForm, setDepositForm] = useState({ fundId: null, type: 'deposit', amount: '', note: '' });
+  const [cashHistories, setCashHistories] = useState({}); // { fundId: [...records] }
+  const [showHistory, setShowHistory] = useState({}); // { fundId: boolean }
+
+  // Fetch cash history when a fund is expanded
+  useEffect(() => {
+    if (expandedFund && !cashHistories[expandedFund]) {
+      apiGetFundCashHistory(expandedFund)
+        .then(data => {
+          setCashHistories(prev => ({ ...prev, [expandedFund]: data || [] }));
+        })
+        .catch(err => {
+          console.error('Error fetching cash history:', err);
+          setCashHistories(prev => ({ ...prev, [expandedFund]: [] }));
+        });
+    }
+  }, [expandedFund]);
 
   // Calculate fund holdings from portfolio
   const fundData = useMemo(() => {
@@ -56,8 +72,22 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
       : currentCash - amount;
 
     try {
-      await apiUpdateFund(fund.id, { cashBalance: newCash });
-      setDepositForm({ fundId: null, type: 'deposit', amount: '' });
+      // Record cash history with note
+      await apiAddFundCashHistory(fund.id, {
+        fundId: fund.id,
+        fundName: fund.name,
+        type: depositForm.type,
+        amount: amount,
+        balanceBefore: currentCash,
+        balanceAfter: newCash,
+        note: depositForm.note || '',
+      });
+
+      // Refresh local cache of this fund's history
+      const updatedHistory = await apiGetFundCashHistory(fund.id);
+      setCashHistories(prev => ({ ...prev, [fund.id]: updatedHistory || [] }));
+
+      setDepositForm({ fundId: null, type: 'deposit', amount: '', note: '' });
       if (onUpdate) onUpdate();
     } catch (err) {
       console.error(err);
@@ -76,6 +106,16 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
     return data.length > 1 ? [{ label: fundName, data, color: funds.find(f => f.name === fundName)?.color || '#3b82f6' }] : [];
   };
 
+  const formatHistoryDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="section-header">
@@ -90,6 +130,8 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
           const isExpanded = expandedFund === fund.id;
           const isDepositing = depositForm.fundId === fund.id;
           const pctOfTotal = totalAllFunds > 0 ? (fund.totalValue / totalAllFunds) * 100 : 0;
+          const history = cashHistories[fund.id] || [];
+          const isHistoryVisible = showHistory[fund.id] || false;
 
           return (
             <div key={fund.id} className={`fund-card glass-card ${isExpanded ? 'fund-card--expanded' : ''}`}>
@@ -156,18 +198,82 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
                         value={depositForm.amount}
                         onChange={e => setDepositForm(p => ({ ...p, amount: e.target.value }))}
                       />
+                      <input
+                        type="text" className="form-input form-input-sm"
+                        placeholder="Ghi chú (VD: DCA tháng 4, Rút lãi crypto...)"
+                        value={depositForm.note}
+                        onChange={e => setDepositForm(p => ({ ...p, note: e.target.value }))}
+                      />
                       <div className="fund-deposit-actions">
                         <button className="btn-primary btn-sm" onClick={handleDeposit}>Xác nhận</button>
-                        <button className="btn-ghost btn-sm" onClick={() => setDepositForm({ fundId: null, type: 'deposit', amount: '' })}>Hủy</button>
+                        <button className="btn-ghost btn-sm" onClick={() => setDepositForm({ fundId: null, type: 'deposit', amount: '', note: '' })}>Hủy</button>
                       </div>
                     </div>
                   ) : (
                     <button
                       className="btn-glass btn-sm fund-deposit-btn"
-                      onClick={() => setDepositForm({ fundId: fund.id, type: 'deposit', amount: '' })}
+                      onClick={() => setDepositForm({ fundId: fund.id, type: 'deposit', amount: '', note: '' })}
                     >
                       <Wallet size={14} /> Nạp / Rút tiền quỹ
                     </button>
+                  )}
+
+                  {/* Cash History Toggle */}
+                  <button
+                    className="btn-glass btn-sm fund-history-btn"
+                    onClick={() => setShowHistory(prev => ({ ...prev, [fund.id]: !prev[fund.id] }))}
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    <Clock size={14} />
+                    {isHistoryVisible ? 'Ẩn lịch sử nạp/rút' : `Xem lịch sử nạp/rút (${history.length})`}
+                  </button>
+
+                  {/* Cash History Table */}
+                  {isHistoryVisible && history.length > 0 && (
+                    <div className="fund-cash-history">
+                      <table className="data-table fund-table">
+                        <thead>
+                          <tr>
+                            <th>Thời gian</th>
+                            <th>Loại</th>
+                            <th className="text-right">Số tiền</th>
+                            <th className="text-right">Số dư sau</th>
+                            <th>Ghi chú</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((h, i) => (
+                            <tr key={h.id || i}>
+                              <td className="td-date">{formatHistoryDate(h.createdAt)}</td>
+                              <td>
+                                <span
+                                  className="tx-badge"
+                                  style={{
+                                    background: h.type === 'deposit' ? 'var(--color-emerald-100)' : 'var(--color-rose-100)',
+                                    color: h.type === 'deposit' ? 'var(--color-emerald-700)' : 'var(--color-rose-700)',
+                                  }}
+                                >
+                                  {h.type === 'deposit' ? 'Nạp' : 'Rút'}
+                                </span>
+                              </td>
+                              <td className={`text-right td-mono ${h.type === 'deposit' ? 'color-up' : 'color-down'}`}>
+                                {h.type === 'deposit' ? '+' : '-'}{formatVND(h.amount)}
+                              </td>
+                              <td className="text-right td-mono">{formatVND(h.balanceAfter)}</td>
+                              <td className="td-notes" title={h.note || ''}>
+                                {h.note ? (
+                                  <span className="notes-text"><FileText size={12} style={{ marginRight: 4, opacity: 0.5 }} />{h.note}</span>
+                                ) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {isHistoryVisible && history.length === 0 && (
+                    <p className="fund-history-empty">Chưa có lịch sử nạp/rút tiền.</p>
                   )}
 
                   {/* Holdings Table */}
@@ -188,7 +294,7 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
                           {fund.holdings.map((h, i) => (
                             <tr key={i}>
                               <td className="td-ticker">{h.ticker}</td>
-                              <td className="text-right td-mono">{formatNum(h.qty)}</td>
+                              <td className="text-right td-mono">{formatQty(h.qty, h.assetClass)}</td>
                               <td className="text-right td-mono td-muted">{formatNum(h.avgCost)}</td>
                               <td className="text-right td-mono td-bold">{formatVND(h.actualValue)}</td>
                               <td className={`text-right td-mono ${h.pnl >= 0 ? 'color-up' : 'color-down'}`}>

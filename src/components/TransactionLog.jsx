@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown } from 'lucide-react';
 import { apiDeleteTransaction } from '../services/api';
-import { formatVND, formatNum } from '../utils/formatters';
+import { formatVND, formatNum, formatQty } from '../utils/formatters';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -170,17 +170,18 @@ export default function TransactionLog({ transactions = [], loading = false, onU
                   <ArrowUpDown size={12} />
                 </th>
                 <th>Nơi lưu trữ</th>
+                <th>Ghi chú</th>
                 <th className="text-center">Xóa</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="table-empty">
+                <tr><td colSpan={11} className="table-empty">
                   <div className="spinner"></div>
                   Đang tải dữ liệu...
                 </td></tr>
               ) : paginatedData.length === 0 ? (
-                <tr><td colSpan={10} className="table-empty">
+                <tr><td colSpan={11} className="table-empty">
                   Không có giao dịch nào.
                 </td></tr>
               ) : paginatedData.map(tx => {
@@ -199,7 +200,7 @@ export default function TransactionLog({ transactions = [], loading = false, onU
                     <td className="td-muted">{tx.assetClass}</td>
                     <td className="td-ticker">{tx.ticker}</td>
                     <td className="text-right td-mono">
-                      {tx.quantity ? formatNum(Math.abs(tx.quantity)) : '—'}
+                      {tx.quantity ? formatQty(Math.abs(tx.quantity), tx.assetClass) : '—'}
                     </td>
                     <td className="text-right td-mono td-muted">
                       {tx.unitPrice ? formatNum(tx.unitPrice) : '—'}
@@ -211,6 +212,11 @@ export default function TransactionLog({ transactions = [], loading = false, onU
                       {formatVND(Math.abs(tx.totalVND || 0))}
                     </td>
                     <td className="td-muted">{tx.storage || '—'}</td>
+                    <td className="td-notes" title={tx.notes || ''}>
+                      {tx.notes ? (
+                        <span className="notes-text">{tx.notes}</span>
+                      ) : '—'}
+                    </td>
                     <td className="text-center">
                       <button
                         className="btn-icon btn-icon-danger"

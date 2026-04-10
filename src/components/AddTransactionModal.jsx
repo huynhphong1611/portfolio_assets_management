@@ -169,9 +169,17 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
                 </option>
               ))}
             </select>
-            {selectedFund && form.transactionType === 'Mua' && (
+            {selectedFund && (
               <p className="form-hint-cash">
-                💰 Tiền mặt khả dụng: <strong>{new Intl.NumberFormat('vi-VN').format(selectedFund.cashBalance || 0)} ₫</strong>
+                💰 Tiền mặt trong quỹ: <strong>{new Intl.NumberFormat('vi-VN').format(selectedFund.cashBalance || 0)} ₫</strong>
+                {form.transactionType === 'Mua' && (
+                  <>
+                    {' — '}
+                    <span style={{ color: calculatedTotal() > (selectedFund.cashBalance || 0) ? 'var(--color-rose-500)' : 'var(--color-emerald-500)' }}>
+                      {calculatedTotal() > (selectedFund.cashBalance || 0) ? '⚠️ Không đủ tiền!' : '✅ Đủ tiền'}
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>

@@ -152,6 +152,34 @@ def initialize_default_funds(user_id: str, user_type: str) -> bool:
     return True
 
 
+# ── Fund Cash History ──
+
+def get_fund_cash_history(user_id: str, user_type: str, fund_id: str) -> list[dict]:
+    """Get deposit/withdrawal history for a specific fund."""
+    col = _user_col(user_id, user_type, "fundCashHistory")
+    # Use only where() without order_by to avoid needing a composite index.
+    # Sort in Python instead.
+    docs = col.where("fundId", "==", fund_id).stream()
+    result = []
+    for d in docs:
+        entry = {"id": d.id, **d.to_dict()}
+        # Convert Firestore timestamps to ISO strings for JSON serialization
+        if entry.get("createdAt") and hasattr(entry["createdAt"], "isoformat"):
+            entry["createdAt"] = entry["createdAt"].isoformat()
+        result.append(entry)
+    # Sort by createdAt descending (newest first)
+    result.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+    return result
+
+
+def add_fund_cash_history(user_id: str, user_type: str, data: dict) -> str:
+    """Add a deposit/withdrawal record to fund cash history."""
+    col = _user_col(user_id, user_type, "fundCashHistory")
+    data["createdAt"] = SERVER_TIMESTAMP
+    _, doc_ref = col.add(data)
+    return doc_ref.id
+
+
 # ── Rebalance Targets (Settings) ──
 
 DEFAULT_REBALANCE = {
