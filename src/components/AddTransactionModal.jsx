@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
-import { addTransaction, updateFund } from '../services/firestoreService';
+import { apiAddTransaction, apiUpdateFund } from '../services/api';
 
 const ASSET_TYPES = [
   { value: 'Tiền mặt VNĐ', label: 'Tiền mặt VNĐ', icon: '💵' },
@@ -38,7 +38,7 @@ const initialFormState = {
   fundId: '',
 };
 
-export default function AddTransactionModal({ isOpen, onClose, funds = [] }) {
+export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuccess }) {
   const [form, setForm] = useState(initialFormState);
   const [saving, setSaving] = useState(false);
 
@@ -104,7 +104,7 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [] }) {
         fundName: selectedFund?.name || null,
       };
 
-      await addTransaction(txData);
+      await apiAddTransaction(txData);
 
       // Update fund cash balance
       if (selectedFund) {
@@ -115,10 +115,11 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [] }) {
         } else if (form.transactionType === 'Bán') {
           newCash = fundCash + total;
         }
-        await updateFund(selectedFund.id, { cashBalance: Math.max(0, newCash) });
+        await apiUpdateFund(selectedFund.id, { cashBalance: Math.max(0, newCash) });
       }
 
       setForm({ ...initialFormState, date: now() });
+      if (onSuccess) onSuccess();
       onClose();
     } catch (error) {
       console.error('Error adding transaction:', error);

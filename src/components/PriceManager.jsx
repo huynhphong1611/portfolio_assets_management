@@ -1,23 +1,69 @@
 import React, { useState, useMemo } from 'react';
 import { Save, RefreshCw, Calendar, BarChart3, Loader2 } from 'lucide-react';
-import { saveDailyPrices, getLatestDailyPrices, batchUpdateMarketPrices } from '../services/firestoreService';
+import { apiSaveDailyPrices, apiGetLatestDailyPrices, apiSaveMarketPrices } from '../services/api';
 import { formatNum } from '../utils/formatters';
 
-const PRICE_CATEGORIES = [
+/**
+ * Base tickers that always appear (exchange rates, gold).
+ * Additional tickers are derived from the user's actual portfolio transactions.
+ */
+const BASE_ITEMS = [
   { key: 'USDT', label: 'USDT / VNĐ', unit: 'VNĐ', category: 'Tỷ giá', defaultPrice: 26500 },
   { key: 'GOLD', label: 'Vàng SJC / Chỉ', unit: 'VNĐ', category: 'Vàng', defaultPrice: 17650000 },
-  { key: 'PAXG', label: 'PAXG / USDT', unit: 'USDT', category: 'Vàng', defaultPrice: 3200 },
-  { key: 'VFF', label: 'VFF (Quỹ TP VinaCapital)', unit: 'VNĐ/CCQ', category: 'Trái phiếu', defaultPrice: 25800 },
-  { key: 'DCBF', label: 'DCBF (Dragon Capital Bond)', unit: 'VNĐ/CCQ', category: 'Trái phiếu', defaultPrice: 29300 },
-  { key: 'DCIP', label: 'DCIP (Dragon Capital IP)', unit: 'VNĐ/CCQ', category: 'Trái phiếu', defaultPrice: 12000 },
-  { key: 'FUEVN100', label: 'FUEVN100 (ETF VN100)', unit: 'VNĐ/CCQ', category: 'Cổ phiếu', defaultPrice: 25500 },
-  { key: 'FUEVFVND', label: 'FUEVFVND (ETF VN Diamond)', unit: 'VNĐ/CCQ', category: 'Cổ phiếu', defaultPrice: 37300 },
-  { key: 'VESAF', label: 'VESAF (VinaCapital Equity)', unit: 'VNĐ/CCQ', category: 'Cổ phiếu', defaultPrice: 36000 },
-  { key: 'DCDS', label: 'DCDS (Dragon Capital DS)', unit: 'VNĐ/CCQ', category: 'Cổ phiếu', defaultPrice: 108000 },
-  { key: 'CMCP', label: 'CMCP (Crypto Mix)', unit: 'USDT', category: 'Crypto', defaultPrice: 0.55 },
 ];
 
-export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
+/**
+ * Map assetClass from transactions to price-board categories.
+ */
+const ASSET_CLASS_TO_CATEGORY = {
+  'Trái phiếu': 'Trái phiếu',
+  'Cổ phiếu': 'Cổ phiếu',
+  'Tài sản mã hóa': 'Crypto',
+  'Vàng': 'Vàng',
+  'Tiền mặt USD': 'Tỷ giá',
+  'Tiền mặt VNĐ': 'Tiền mặt',
+};
+
+const CRYPTO_UNIT = 'USDT';
+const VND_UNIT = 'VNĐ/CCQ';
+
+/**
+ * Build the dynamic price item list from transactions.
+ */
+function buildPriceItems(transactions = []) {
+  const tickerMap = {};
+
+  // Extract unique tickers from transactions (skip cash deposits)
+  transactions.forEach(tx => {
+    const ticker = tx.ticker;
+    if (!ticker || ticker === 'VNĐ' || ticker === 'USDT') return;
+    if (tickerMap[ticker]) return;
+
+    const assetClass = tx.assetClass || '';
+    const category = ASSET_CLASS_TO_CATEGORY[assetClass] || 'Khác';
+    const isCrypto = assetClass === 'Tài sản mã hóa';
+
+    tickerMap[ticker] = {
+      key: ticker,
+      label: ticker,
+      unit: isCrypto ? CRYPTO_UNIT : VND_UNIT,
+      category,
+      defaultPrice: 0,
+    };
+  });
+
+  // Merge base items + portfolio items, avoid duplicates
+  const all = [...BASE_ITEMS];
+  Object.values(tickerMap).forEach(item => {
+    if (!all.find(b => b.key === item.key)) {
+      all.push(item);
+    }
+  });
+
+  return all;
+}
+
+export default function PriceManager({ dailyPrices = [], transactions = [], apiEnabled = false, onUpdate }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = useState(today);
   const [prices, setPrices] = useState({});
@@ -25,9 +71,11 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
   const [fetching, setFetching] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  // Build dynamic price items from transactions
+  const priceItems = useMemo(() => buildPriceItems(transactions), [transactions]);
+
   // Load prices for selected date or latest
   const loadPrices = async () => {
-    // Check if we have prices for this date
     const existing = dailyPrices.find(dp => dp.date === selectedDate);
     if (existing && existing.prices) {
       setPrices(existing.prices);
@@ -35,43 +83,39 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
       return;
     }
 
-    // Otherwise load latest
-    const latest = await getLatestDailyPrices();
+    const latest = await apiGetLatestDailyPrices();
     if (latest?.prices) {
       setPrices(latest.prices);
     } else {
-      // Use defaults
       const defaults = {};
-      PRICE_CATEGORIES.forEach(p => { defaults[p.key] = p.defaultPrice; });
+      priceItems.forEach(p => { if (p.defaultPrice) defaults[p.key] = p.defaultPrice; });
       setPrices(defaults);
     }
     setLoaded(true);
   };
 
-  // Auto-load on mount
-  useMemo(() => { loadPrices(); }, [selectedDate, dailyPrices.length]);
+  // Auto-load on mount / date change
+  useMemo(() => { loadPrices(); }, [selectedDate, dailyPrices.length, priceItems.length]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // 1. Save to dailyPrices collection
-      await saveDailyPrices(selectedDate, prices);
+      await apiSaveDailyPrices(selectedDate, prices);
 
-      // 2. Sync to marketPrices collection so portfolio P&L recalculates
+      // Sync to marketPrices
       const marketPricesMap = {};
-      PRICE_CATEGORIES.forEach(item => {
+      priceItems.forEach(item => {
         if (prices[item.key]) {
           if (item.key === 'USDT') {
             marketPricesMap[item.key] = { price: 1, exchangeRate: prices[item.key] };
-          } else if (item.key === 'GOLD' || item.key === 'PAXG') {
-            marketPricesMap[item.key] = { price: prices[item.key] };
           } else {
             marketPricesMap[item.key] = { price: prices[item.key] };
           }
         }
       });
-      await batchUpdateMarketPrices(marketPricesMap);
+      await apiSaveMarketPrices(marketPricesMap);
 
+      if (onUpdate) onUpdate();
       alert('✅ Đã lưu bảng giá ngày ' + selectedDate + ' và cập nhật giá thị trường.');
     } catch (err) {
       console.error(err);
@@ -83,13 +127,22 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
 
   const handleFetchAPI = async () => {
     if (!apiEnabled) {
-      alert('API proxy chưa được bật. Kiểm tra docker-compose và service api.');
+      alert('API chưa được bật.');
       return;
     }
     setFetching(true);
     try {
-      // Fetch VN stock prices and CMC Crypto prices from our Python API proxy
-      const symbols = ['FUEVN100', 'FUEVFVND', 'VESAF', 'DCDS', 'DCBF', 'DCIP', 'VFF', 'PAXG', 'BTC'];
+      // Collect all tickers except USDT (exchange rate) and GOLD (manual)
+      const symbols = priceItems
+        .filter(p => p.key !== 'USDT' && p.key !== 'GOLD')
+        .map(p => p.key);
+
+      if (symbols.length === 0) {
+        alert('Không có mã tài sản nào để lấy giá.');
+        setFetching(false);
+        return;
+      }
+
       const response = await fetch(`/api/prices/stocks?symbols=${symbols.join(',')}&target_date=${selectedDate}`);
       if (!response.ok) throw new Error('API không phản hồi');
       const data = await response.json();
@@ -97,19 +150,18 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
       const newPrices = { ...prices };
       let hasRateLimit = false;
       data.forEach(item => {
-        // Prevent accidental overwrites of the USDT exchange rate 
         if (item.symbol === 'USDT') return;
         if (item.error && item.error.includes('RATE_LIMIT_ERROR')) {
-            hasRateLimit = true;
+          hasRateLimit = true;
         }
         if (item.price) newPrices[item.symbol] = item.price;
       });
       setPrices(newPrices);
-      
+
       if (hasRateLimit) {
-          alert('⚠️ Cảnh báo: API VnStock đã đạt giới hạn tải dữ liệu (Rate Limit). Các mã bị thiếu sẽ được bỏ qua. Vui lòng đợi 1 phút và thử lại.');
+        alert('⚠️ API đạt giới hạn tải dữ liệu (Rate Limit). Một số mã bị thiếu. Đợi 1 phút rồi thử lại.');
       } else {
-          alert('✅ Đã lấy giá tự động từ định tuyến API Proxy (vnstock & CoinGecko)!');
+        alert('✅ Đã lấy giá tự động từ API (vnstock & CoinGecko)!');
       }
     } catch (err) {
       console.error(err);
@@ -122,12 +174,18 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
   // Group by category
   const categories = useMemo(() => {
     const groups = {};
-    PRICE_CATEGORIES.forEach(p => {
+    priceItems.forEach(p => {
       if (!groups[p.category]) groups[p.category] = [];
       groups[p.category].push(p);
     });
     return groups;
-  }, []);
+  }, [priceItems]);
+
+  // Dynamic history columns (top 6 tickers)
+  const historyColumns = useMemo(() => {
+    const cols = priceItems.slice(0, 6).map(p => p.key);
+    return cols;
+  }, [priceItems]);
 
   return (
     <div className="animate-fade-in">
@@ -135,7 +193,7 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
         <div>
           <h2 className="section-title">Bảng giá hàng ngày</h2>
           <p className="section-subtitle">
-            Nhập giá tài sản theo ngày. Nếu không nhập, hệ thống dùng giá gần nhất.
+            Tự động lấy danh sách mã từ danh mục đầu tư. Nhập giá hoặc lấy từ API.
           </p>
         </div>
       </div>
@@ -156,7 +214,7 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
             className="btn-glass btn-sm"
             onClick={handleFetchAPI}
             disabled={fetching}
-            title={apiEnabled ? 'Lấy giá CK Việt Nam từ vnstock' : 'API proxy chưa bật'}
+            title="Lấy giá tự động từ vnstock & CoinGecko"
           >
             {fetching ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
             Lấy giá từ API
@@ -186,7 +244,7 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
                     className="form-input price-item-input"
                     value={prices[item.key] || ''}
                     onChange={e => setPrices(p => ({ ...p, [item.key]: parseFloat(e.target.value) || 0 }))}
-                    placeholder={String(item.defaultPrice)}
+                    placeholder={item.defaultPrice ? String(item.defaultPrice) : '0'}
                   />
                 </div>
               ))}
@@ -204,22 +262,20 @@ export default function PriceManager({ dailyPrices = [], apiEnabled = false }) {
               <thead>
                 <tr>
                   <th>Ngày</th>
-                  <th className="text-right">USDT</th>
-                  <th className="text-right">Vàng SJC</th>
-                  <th className="text-right">VFF</th>
-                  <th className="text-right">FUEVN100</th>
-                  <th className="text-right">CMCP</th>
+                  {historyColumns.map(col => (
+                    <th key={col} className="text-right">{col}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {dailyPrices.slice(0, 10).map(dp => (
                   <tr key={dp.id} className="table-row-hover" onClick={() => { setSelectedDate(dp.date); setLoaded(false); }} style={{ cursor: 'pointer' }}>
                     <td className="td-date">{dp.date}</td>
-                    <td className="text-right td-mono">{dp.prices?.USDT ? formatNum(dp.prices.USDT) : '—'}</td>
-                    <td className="text-right td-mono">{dp.prices?.GOLD ? formatNum(dp.prices.GOLD) : '—'}</td>
-                    <td className="text-right td-mono">{dp.prices?.VFF ? formatNum(dp.prices.VFF) : '—'}</td>
-                    <td className="text-right td-mono">{dp.prices?.FUEVN100 ? formatNum(dp.prices.FUEVN100) : '—'}</td>
-                    <td className="text-right td-mono">{dp.prices?.CMCP ? formatNum(dp.prices.CMCP) : '—'}</td>
+                    {historyColumns.map(col => (
+                      <td key={col} className="text-right td-mono">
+                        {dp.prices?.[col] ? formatNum(dp.prices[col]) : '—'}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

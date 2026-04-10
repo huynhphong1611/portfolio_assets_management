@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PlusCircle, Trash2, Pencil, X, AlertTriangle, CreditCard } from 'lucide-react';
-import { addLiability, updateLiability, deleteLiability } from '../services/firestoreService';
+import { apiAddLiability, apiUpdateLiability, apiDeleteLiability } from '../services/api';
 import { formatVND } from '../utils/formatters';
 
 const LIABILITY_TYPES = [
@@ -11,7 +11,7 @@ const LIABILITY_TYPES = [
   { value: 'Khác', label: '📋 Khác' },
 ];
 
-export default function LiabilitiesManager({ liabilities = [] }) {
+export default function LiabilitiesManager({ liabilities = [], onUpdate }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', amount: '', type: 'Vay cá nhân', interestRate: '', dueDate: '', notes: '' });
@@ -21,7 +21,7 @@ export default function LiabilitiesManager({ liabilities = [] }) {
   const handleAdd = async () => {
     if (!form.name || !form.amount) return;
     try {
-      await addLiability({
+      await apiAddLiability({
         name: form.name,
         amount: parseFloat(form.amount) || 0,
         type: form.type,
@@ -31,13 +31,14 @@ export default function LiabilitiesManager({ liabilities = [] }) {
       });
       setForm({ name: '', amount: '', type: 'Vay cá nhân', interestRate: '', dueDate: '', notes: '' });
       setIsAdding(false);
+      if (onUpdate) onUpdate();
     } catch (err) { console.error(err); }
   };
 
   const handleUpdate = async (id) => {
     if (!form.name || !form.amount) return;
     try {
-      await updateLiability(id, {
+      await apiUpdateLiability(id, {
         name: form.name,
         amount: parseFloat(form.amount) || 0,
         type: form.type,
@@ -47,12 +48,14 @@ export default function LiabilitiesManager({ liabilities = [] }) {
       });
       setEditingId(null);
       setForm({ name: '', amount: '', type: 'Vay cá nhân', interestRate: '', dueDate: '', notes: '' });
+      if (onUpdate) onUpdate();
     } catch (err) { console.error(err); }
   };
 
   const handleDelete = async (id) => {
     if (!confirm('Xóa khoản nợ này?')) return;
-    await deleteLiability(id);
+    await apiDeleteLiability(id);
+    if (onUpdate) onUpdate();
   };
 
   const startEdit = (item) => {

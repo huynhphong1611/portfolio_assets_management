@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Save, RotateCcw, Settings2 } from 'lucide-react';
-import { saveRebalanceTargets } from '../services/firestoreService';
+import { apiSaveRebalanceTargets } from '../services/api';
 
 const ASSET_CLASSES = [
   { key: 'Tiền mặt VNĐ', label: 'Tiền mặt VNĐ', icon: '💵' },
@@ -20,7 +20,7 @@ const DEFAULT_TARGETS = {
   "Tài sản mã hóa": 10,
 };
 
-export default function RebalanceSettings({ currentTargets = DEFAULT_TARGETS, onSave }) {
+export default function RebalanceSettings({ currentTargets = DEFAULT_TARGETS, onSave, onUpdate }) {
   const [isEditing, setIsEditing] = useState(false);
   const [targets, setTargets] = useState({ ...currentTargets });
   const [saving, setSaving] = useState(false);
@@ -39,9 +39,10 @@ export default function RebalanceSettings({ currentTargets = DEFAULT_TARGETS, on
     if (!isValid) return;
     setSaving(true);
     try {
-      await saveRebalanceTargets(targets);
+      await apiSaveRebalanceTargets(targets);
       setIsEditing(false);
       if (onSave) onSave(targets);
+      if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error saving targets:', error);
       alert('Lỗi khi lưu. Thử lại.');

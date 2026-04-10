@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PlusCircle, Trash2, X, Pencil, Building2, Coins } from 'lucide-react';
-import { addExternalAsset, deleteExternalAsset, updateExternalAsset } from '../services/firestoreService';
+import { apiAddExternalAsset, apiDeleteExternalAsset, apiUpdateExternalAsset } from '../services/api';
 import { formatVND } from '../utils/formatters';
 
 const GROUPS = [
@@ -8,7 +8,7 @@ const GROUPS = [
   { value: 'Đầu tư', label: 'Đầu tư dài hạn', icon: '📊' },
 ];
 
-export default function NetWorthExternalManager({ externalAssets = [] }) {
+export default function NetWorthExternalManager({ externalAssets = [], onUpdate }) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', value: '', group: 'Thanh khoản' });
@@ -16,13 +16,14 @@ export default function NetWorthExternalManager({ externalAssets = [] }) {
   const handleAdd = async () => {
     if (!form.name || !form.value) return;
     try {
-      await addExternalAsset({
+      await apiAddExternalAsset({
         name: form.name,
         value: parseFloat(form.value) || 0,
         group: form.group,
       });
       setForm({ name: '', value: '', group: 'Thanh khoản' });
       setIsAdding(false);
+      if (onUpdate) onUpdate();
     } catch (err) {
       console.error('Error adding external asset:', err);
     }
@@ -31,7 +32,8 @@ export default function NetWorthExternalManager({ externalAssets = [] }) {
   const handleDelete = async (id) => {
     if (!confirm('Xóa tài sản này?')) return;
     try {
-      await deleteExternalAsset(id);
+      await apiDeleteExternalAsset(id);
+      if (onUpdate) onUpdate();
     } catch (err) {
       console.error('Error deleting:', err);
     }
@@ -40,13 +42,14 @@ export default function NetWorthExternalManager({ externalAssets = [] }) {
   const handleUpdate = async (id) => {
     if (!form.name || !form.value) return;
     try {
-      await updateExternalAsset(id, {
+      await apiUpdateExternalAsset(id, {
         name: form.name,
         value: parseFloat(form.value) || 0,
         group: form.group,
       });
       setEditingId(null);
       setForm({ name: '', value: '', group: 'Thanh khoản' });
+      if (onUpdate) onUpdate();
     } catch (err) {
       console.error('Error updating:', err);
     }

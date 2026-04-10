@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Landmark, PlusCircle, MinusCircle, Wallet, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react';
-import { updateFund } from '../services/firestoreService';
+import { apiUpdateFund } from '../services/api';
 import { formatVND, formatNum, formatPercent } from '../utils/formatters';
 import LineChart from './charts/LineChart';
 
-export default function FundManager({ funds = [], portfolio = [], transactions = [], snapshots = [] }) {
+export default function FundManager({ funds = [], portfolio = [], transactions = [], snapshots = [], onUpdate }) {
   const [expandedFund, setExpandedFund] = useState(null);
   const [depositForm, setDepositForm] = useState({ fundId: null, type: 'deposit', amount: '' });
 
@@ -56,8 +56,9 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
       : currentCash - amount;
 
     try {
-      await updateFund(fund.id, { cashBalance: newCash });
+      await apiUpdateFund(fund.id, { cashBalance: newCash });
       setDepositForm({ fundId: null, type: 'deposit', amount: '' });
+      if (onUpdate) onUpdate();
     } catch (err) {
       console.error(err);
       alert('Lỗi khi cập nhật quỹ.');

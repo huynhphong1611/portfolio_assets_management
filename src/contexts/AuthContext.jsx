@@ -1,22 +1,15 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { authenticateUser, getServiceUserId, setServiceUserId, registerUser } from '../services/firestoreService';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import {
+  apiGuestLogin, apiGuestRegister, apiFirebaseVerify,
+  setAuthToken, clearAuthToken
+} from '../services/api';
 
 const AuthContext = createContext();
 
 export function useAuth() {
   return useContext(AuthContext);
-}
-
-// Helper: Hashing function in frontend (SHA-256)
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 export function AuthProvider({ children }) {
@@ -28,21 +21,33 @@ export function AuthProvider({ children }) {
     let firebaseUnsub;
 
     const savedUser = localStorage.getItem('portfolioUser');
-    if (savedUser) {
+    const savedToken = localStorage.getItem('portfolioToken');
+
+    if (savedUser && savedToken) {
       const user = JSON.parse(savedUser);
-      setServiceUserId(user.id, user.type);
+      setAuthToken(savedToken);
       setCurrentUser(user);
       setLoading(false);
     } else {
-      // If no custom user, listen to Firebase Auth
-      firebaseUnsub = onAuthStateChanged(auth, (fbUser) => {
+      // If no saved session, listen to Firebase Auth
+      firebaseUnsub = onAuthStateChanged(auth, async (fbUser) => {
         if (fbUser) {
-          const u = { id: fbUser.uid, username: fbUser.email, type: 'firebase' };
-          setServiceUserId(u.id, u.type);
-          setCurrentUser(u);
+          try {
+            // Get Firebase ID token and verify with our backend
+            const idToken = await fbUser.getIdToken();
+            const result = await apiFirebaseVerify(idToken);
+            const u = { id: result.id, username: result.username, type: result.type };
+            setAuthToken(result.token);
+            setCurrentUser(u);
+            localStorage.setItem('portfolioUser', JSON.stringify(u));
+            localStorage.setItem('portfolioToken', result.token);
+          } catch (err) {
+            console.error('Firebase verify failed:', err);
+            setCurrentUser(null);
+          }
         } else {
           setCurrentUser(null);
-          setServiceUserId(null);
+          clearAuthToken();
         }
         setLoading(false);
       });
@@ -54,22 +59,27 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (username, password) => {
-    const passHash = await hashPassword(password);
-    const user = await authenticateUser(username, passHash);
-    if (user) {
-      setCurrentUser(user);
-      localStorage.setItem('portfolioUser', JSON.stringify(user));
+    // Guest login — backend handles hashing
+    const result = await apiGuestLogin(username, password);
+    if (result && result.token) {
+      const u = { id: result.id, username: result.username, type: result.type };
+      setAuthToken(result.token);
+      setCurrentUser(u);
+      localStorage.setItem('portfolioUser', JSON.stringify(u));
+      localStorage.setItem('portfolioToken', result.token);
       return true;
     }
     return false;
   };
 
   const register = async (username, password) => {
-    const passHash = await hashPassword(password);
-    const user = await registerUser(username, passHash);
-    if (user) {
-      setCurrentUser(user);
-      localStorage.setItem('portfolioUser', JSON.stringify(user));
+    const result = await apiGuestRegister(username, password);
+    if (result && result.token) {
+      const u = { id: result.id, username: result.username, type: result.type };
+      setAuthToken(result.token);
+      setCurrentUser(u);
+      localStorage.setItem('portfolioUser', JSON.stringify(u));
+      localStorage.setItem('portfolioToken', result.token);
       return true;
     }
     return false;
@@ -77,17 +87,28 @@ export function AuthProvider({ children }) {
 
   const loginFirebase = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const u = { id: userCredential.user.uid, username: userCredential.user.email, type: 'firebase' };
+    const idToken = await userCredential.user.getIdToken();
+
+    // Verify with our backend and get JWT
+    const result = await apiFirebaseVerify(idToken);
+    const u = { id: result.id, username: result.username, type: result.type };
+    setAuthToken(result.token);
     setCurrentUser(u);
-    setServiceUserId(u.id, u.type);
+    localStorage.setItem('portfolioUser', JSON.stringify(u));
+    localStorage.setItem('portfolioToken', result.token);
     return true;
   };
 
   const registerFirebase = async (email, password) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const u = { id: userCredential.user.uid, username: userCredential.user.email, type: 'firebase' };
+    const idToken = await userCredential.user.getIdToken();
+
+    const result = await apiFirebaseVerify(idToken);
+    const u = { id: result.id, username: result.username, type: result.type };
+    setAuthToken(result.token);
     setCurrentUser(u);
-    setServiceUserId(u.id, u.type);
+    localStorage.setItem('portfolioUser', JSON.stringify(u));
+    localStorage.setItem('portfolioToken', result.token);
     return true;
   };
 
@@ -96,8 +117,9 @@ export function AuthProvider({ children }) {
       await signOut(auth);
     }
     setCurrentUser(null);
-    setServiceUserId(null);
+    clearAuthToken();
     localStorage.removeItem('portfolioUser');
+    localStorage.removeItem('portfolioToken');
   };
 
   const value = {

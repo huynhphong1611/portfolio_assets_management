@@ -15,21 +15,23 @@ services:
       - .env
     environment:
       - CHOKIDAR_USEPOLLING=true
+      - VITE_API_PROXY_TARGET=http://backend:8000
     depends_on:
-      - api
+      - backend
 
   # ============================================================
-  # API — Python FastAPI + vnstock
+  # BACKEND — Python FastAPI (unified: auth + CRUD + prices)
   # ============================================================
-  api:
-    build: ./api
+  backend:
+    build: ./backend
     ports:
       - "8000:8000"
     volumes:
-      - ./api:/app
+      - ./backend:/app
       - ./logs:/app/logs
     env_file:
       - .env
     environment:
       - VNSTOCK_API_ENABLED=${VNSTOCK_API_ENABLED:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FIREBASE_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json

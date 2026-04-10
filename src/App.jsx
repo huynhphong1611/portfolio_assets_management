@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard, Briefcase, ArrowRightLeft, Scale, TrendingUp, TrendingDown,
   Wallet, PieChart, Activity, Menu, X, PlusCircle, RefreshCw, Search,
@@ -14,11 +14,11 @@ import {
   calculateRebalance, calculateTotalPnL, generateSnapshot
 } from './utils/portfolioCalculator.js';
 import {
-  subscribeTransactions, subscribeExternalAssets, subscribeRebalanceTargets,
-  subscribeMarketPrices, subscribeLiabilities, subscribeSnapshots,
-  subscribeDailyPrices, subscribeFunds, initializeDefaultFunds,
-  saveSnapshot
-} from './services/firestoreService.js';
+  apiGetTransactions, apiGetExternalAssets, apiGetRebalanceTargets,
+  apiGetMarketPrices, apiGetLiabilities, apiGetSnapshots,
+  apiGetDailyPrices, apiGetFunds, apiInitializeFunds,
+  apiSaveSnapshot
+} from './services/api.js';
 import { importCSVToFirestore, CSV_RAW_DATA } from './scripts/importCSV.js';
 
 import TransactionLog from './components/TransactionLog.jsx';
@@ -42,7 +42,7 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Firebase realtime state
+  // Data state (fetched from backend API)
   const [transactions, setTransactions] = useState([]);
   const [externalAssets, setExternalAssets] = useState([]);
   const [rebalanceTargets, setRebalanceTargets] = useState({});
@@ -55,34 +55,55 @@ export default function App() {
   const [importing, setImporting] = useState(false);
 
   // ============================================================
-  // FIREBASE SUBSCRIPTIONS
+  // DATA FETCHING (replaced Firestore subscriptions)
   // ============================================================
 
-  useEffect(() => {
+  const fetchAllData = useCallback(async () => {
     if (!currentUser) return;
-
     setLoading(true);
-    let loadCount = 0;
-    const totalSubs = 8;
-    const markLoaded = () => { loadCount++; if (loadCount >= totalSubs) setLoading(false); };
+    try {
+      const [txs, extAssets, targets, mktPrices, debts, snaps, dailyP, fundsData] =
+        await Promise.all([
+          apiGetTransactions().catch(() => []),
+          apiGetExternalAssets().catch(() => []),
+          apiGetRebalanceTargets().catch(() => ({})),
+          apiGetMarketPrices().catch(() => ({})),
+          apiGetLiabilities().catch(() => []),
+          apiGetSnapshots().catch(() => []),
+          apiGetDailyPrices().catch(() => []),
+          apiGetFunds().catch(() => []),
+        ]);
 
-    const unsubs = [
-      subscribeTransactions(items => { setTransactions(items); markLoaded(); }),
-      subscribeExternalAssets(items => { setExternalAssets(items); markLoaded(); }),
-      subscribeRebalanceTargets(targets => { setRebalanceTargets(targets); markLoaded(); }),
-      subscribeMarketPrices(prices => { setMarketPrices(prices); markLoaded(); }),
-      subscribeLiabilities(items => { setLiabilities(items); markLoaded(); }),
-      subscribeSnapshots(items => { setSnapshots(items); markLoaded(); }),
-      subscribeDailyPrices(items => { setDailyPrices(items); markLoaded(); }),
-      subscribeFunds(items => { setFunds(items); markLoaded(); }),
-    ];
+      setTransactions(txs || []);
+      setExternalAssets(extAssets || []);
+      setRebalanceTargets(targets || {});
+      setMarketPrices(mktPrices || {});
+      setLiabilities(debts || []);
+      setSnapshots(snaps || []);
+      setDailyPrices(dailyP || []);
+      setFunds(fundsData || []);
 
-    // Initialize default funds if empty
-    initializeDefaultFunds().catch(console.error);
-
-    const timer = setTimeout(() => setLoading(false), 6000);
-    return () => { unsubs.forEach(fn => fn()); clearTimeout(timer); };
+      // Initialize default funds if empty
+      if (!fundsData || fundsData.length === 0) {
+        await apiInitializeFunds().catch(console.error);
+        const newFunds = await apiGetFunds().catch(() => []);
+        setFunds(newFunds || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [currentUser]);
+
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  // Expose refreshData for child components to trigger after mutations
+  const refreshData = useCallback(() => {
+    fetchAllData();
+  }, [fetchAllData]);
 
   // ============================================================
   // AUTO SNAPSHOT — once per day on app load
@@ -95,12 +116,14 @@ export default function App() {
     const alreadyExists = snapshots.some(s => s.date === today);
     if (alreadyExists) return;
 
-    // Need to recalculate here since portfolio/netWorth may not be up-to-date yet
+    // Recalculate for snapshot
     const h = calculateHoldings(transactions);
     const p = calculatePortfolio(h, marketPrices);
     const snap = generateSnapshot(p, externalAssets, liabilities, funds);
-    saveSnapshot(today, snap).then(() => {
+    apiSaveSnapshot({ date: today, ...snap }).then(() => {
       console.log('📸 Auto-snapshot saved for', today);
+      // Re-fetch snapshots
+      apiGetSnapshots().then(s => setSnapshots(s || []));
     }).catch(console.error);
   }, [loading, transactions.length, snapshots.length, funds.length]);
 
@@ -164,8 +187,9 @@ export default function App() {
     const today = new Date().toISOString().slice(0, 10);
     try {
       const snap = generateSnapshot(portfolio, externalAssets, liabilities, funds);
-      await saveSnapshot(today, snap);
+      await apiSaveSnapshot({ date: today, ...snap });
       alert('📸 Snapshot đã được lưu cho ngày ' + today);
+      refreshData();
     } catch (err) { alert('Lỗi: ' + err.message); }
   };
 
@@ -196,7 +220,7 @@ export default function App() {
         <div className="loading-content">
           <div className="loading-logo"><Activity size={40} /></div>
           <h2 className="loading-title">Portfolio Manager V5</h2>
-          <p className="loading-subtitle">Đang kết nối Firebase...</p>
+          <p className="loading-subtitle">Đang tải dữ liệu...</p>
           <div className="loading-bar"><div className="loading-bar-fill"></div></div>
         </div>
       </div>
@@ -209,7 +233,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <AddTransactionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} funds={funds} />
+      <AddTransactionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} funds={funds} onSuccess={refreshData} />
 
       {/* SIDEBAR */}
       <aside className="sidebar">
@@ -347,12 +371,12 @@ export default function App() {
 
                 {/* External Assets */}
                 <div className="glass-card section-card">
-                  <NetWorthExternalManager externalAssets={externalAssets} />
+                  <NetWorthExternalManager externalAssets={externalAssets} onUpdate={refreshData} />
                 </div>
 
                 {/* Liabilities */}
                 <div className="glass-card section-card">
-                  <LiabilitiesManager liabilities={liabilities} />
+                  <LiabilitiesManager liabilities={liabilities} onUpdate={refreshData} />
                 </div>
               </div>
             )}
@@ -456,7 +480,7 @@ export default function App() {
 
             {/* ===== TAB 3: FUNDS ===== */}
             {activeTab === 'funds' && (
-              <FundManager funds={funds} portfolio={portfolio} transactions={transactions} snapshots={snapshots} />
+              <FundManager funds={funds} portfolio={portfolio} transactions={transactions} snapshots={snapshots} onUpdate={refreshData} />
             )}
 
             {/* ===== TAB 4: REBALANCE ===== */}
@@ -467,7 +491,7 @@ export default function App() {
                     <h2 className="section-title">Tái cơ cấu (Rebalance)</h2>
                     <p className="section-subtitle">So sánh tỷ trọng thực tế với mục tiêu.</p>
                   </div>
-                  <RebalanceSettings currentTargets={rebalanceTargets} onSave={targets => setRebalanceTargets(targets)} />
+                  <RebalanceSettings currentTargets={rebalanceTargets} onSave={targets => { setRebalanceTargets(targets); }} onUpdate={refreshData} />
                 </div>
                 <div className="rebalance-grid">
                   {rebalanceData.map((item, idx) => {
@@ -512,7 +536,7 @@ export default function App() {
 
             {/* ===== TAB 5: PRICES ===== */}
             {activeTab === 'prices' && (
-              <PriceManager dailyPrices={dailyPrices} apiEnabled={true} />
+              <PriceManager dailyPrices={dailyPrices} transactions={transactions} apiEnabled={true} onUpdate={refreshData} />
             )}
 
             {/* ===== TAB 6: TRANSACTIONS ===== */}
@@ -527,7 +551,7 @@ export default function App() {
                     <PlusCircle size={18} /> Thêm Giao dịch
                   </button>
                 </div>
-                <TransactionLog transactions={transactions} loading={loading} />
+                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} />
               </div>
             )}
 

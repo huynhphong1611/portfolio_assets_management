@@ -1,13 +1,52 @@
+# ══════════════════════════════════════════════
+# SECRETS & CREDENTIALS — NEVER COMMIT
+# ══════════════════════════════════════════════
 .env
 .env.local
 .env.*.local
-node_modules/
-dist/
-*.log
-.DS_Store
-*.csv
-logs/
+*.pem
+*.key
+credentials.json
+service-account*.json
+firebase-adminsdk*.json
+
+# ══════════════════════════════════════════════
+# PYTHON
+# ══════════════════════════════════════════════
 __pycache__/
 *.pyc
+*.pyo
 .venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# ══════════════════════════════════════════════
+# NODE
+# ══════════════════════════════════════════════
+node_modules/
+dist/
+build/
+coverage/
+
+# ══════════════════════════════════════════════
+# LOGS
+# ══════════════════════════════════════════════
+logs/
+*.log
+backend/logs/
+
+# ══════════════════════════════════════════════
+# IDE & OS
+# ══════════════════════════════════════════════
+.DS_Store
+Thumbs.db
+
+# ══════════════════════════════════════════════
+# PROJECT SPECIFIC
+# ══════════════════════════════════════════════
+*.csv
 nextplan.txt
+backend/*.json
+docker-compose.override.yml

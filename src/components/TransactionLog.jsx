@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown } from 'lucide-react';
-import { deleteTransaction } from '../services/firestoreService';
+import { apiDeleteTransaction } from '../services/api';
 import { formatVND, formatNum } from '../utils/formatters';
 
 const ITEMS_PER_PAGE = 15;
@@ -11,7 +11,7 @@ const TX_TYPE_STYLES = {
   'Bán': { bg: 'var(--color-rose-100)', color: 'var(--color-rose-700)', label: 'B' },
 };
 
-export default function TransactionLog({ transactions = [], loading = false }) {
+export default function TransactionLog({ transactions = [], loading = false, onUpdate }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAssetClass, setFilterAssetClass] = useState('all');
@@ -89,7 +89,8 @@ export default function TransactionLog({ transactions = [], loading = false }) {
   const handleDelete = async (id) => {
     if (!confirm('Bạn có chắc muốn xóa giao dịch này?')) return;
     try {
-      await deleteTransaction(id);
+      await apiDeleteTransaction(id);
+      if (onUpdate) onUpdate();
     } catch (err) {
       console.error('Error deleting:', err);
       alert('Lỗi khi xóa giao dịch.');
