@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
-import { apiAddTransaction, apiUpdateFund } from '../services/api';
+import { apiAddTransaction, apiUpdateTransaction, apiUpdateFund } from '../services/api';
 
 const ASSET_TYPES = [
   { value: 'Tiền mặt VNĐ', label: 'Tiền mặt VNĐ', icon: '💵' },
@@ -38,9 +38,23 @@ const initialFormState = {
   fundId: '',
 };
 
-export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuccess }) {
+export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuccess, transactionToEdit }) {
   const [form, setForm] = useState(initialFormState);
   const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (transactionToEdit) {
+        setForm({
+          ...initialFormState,
+          ...transactionToEdit,
+          quantity: Math.abs(transactionToEdit.quantity), // remove negative sign for Bán
+        });
+      } else {
+        setForm({ ...initialFormState, date: now() });
+      }
+    }
+  }, [isOpen, transactionToEdit]);
 
   if (!isOpen) return null;
 
@@ -104,10 +118,15 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
         fundName: selectedFund?.name || null,
       };
 
-      await apiAddTransaction(txData);
+      if (transactionToEdit) {
+        await apiUpdateTransaction(transactionToEdit.id, txData);
+      } else {
+        await apiAddTransaction(txData);
+      }
 
-      // Update fund cash balance
-      if (selectedFund) {
+      // Update fund cash balance (Simplified: recalculate manually for Edit is complex,
+      // so if editing we won't auto-calculate cash to avoid double/wrong logic)
+      if (selectedFund && !transactionToEdit) {
         const fundCash = parseFloat(selectedFund.cashBalance) || 0;
         let newCash = fundCash;
         if (form.transactionType === 'Mua') {
@@ -136,8 +155,8 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
           <div className="modal-header-content">
             <div className="modal-icon"><ArrowRightLeft size={20} /></div>
             <div>
-              <h2 className="modal-title">Ghi nhận Giao dịch mới</h2>
-              <p className="modal-subtitle">Thêm giao dịch vào nhật ký đầu tư</p>
+              <h2 className="modal-title">{transactionToEdit ? 'Sửa Giao dịch' : 'Ghi nhận Giao dịch mới'}</h2>
+              <p className="modal-subtitle">{transactionToEdit ? 'Cập nhật lại thông tin giao dịch' : 'Thêm giao dịch vào nhật ký đầu tư'}</p>
             </div>
           </div>
           <button className="modal-close-btn" onClick={onClose}><X size={20} /></button>
@@ -250,7 +269,7 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Hủy</button>
             <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? <><span className="spinner"></span> Đang lưu...</> : 'Thêm Giao dịch'}
+              {saving ? <><span className="spinner"></span> Đang lưu...</> : (transactionToEdit ? 'Cập nhật' : 'Thêm Giao dịch')}
             </button>
           </div>
         </form>

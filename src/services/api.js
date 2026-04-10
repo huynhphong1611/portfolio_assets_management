@@ -94,6 +94,10 @@ export async function apiAddTransaction(data) {
   return requestData('/transactions', { method: 'POST', body: data });
 }
 
+export async function apiUpdateTransaction(txId, data) {
+  return requestData(`/transactions/${txId}`, { method: 'PUT', body: data });
+}
+
 export async function apiDeleteTransaction(txId) {
   return requestData(`/transactions/${txId}`, { method: 'DELETE' });
 }

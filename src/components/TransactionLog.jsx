@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown } from 'lucide-react';
+import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown, Edit } from 'lucide-react';
 import { apiDeleteTransaction } from '../services/api';
 import { formatVND, formatNum, formatQty } from '../utils/formatters';
 
@@ -11,7 +11,7 @@ const TX_TYPE_STYLES = {
   'Bán': { bg: 'var(--color-rose-100)', color: 'var(--color-rose-700)', label: 'B' },
 };
 
-export default function TransactionLog({ transactions = [], loading = false, onUpdate }) {
+export default function TransactionLog({ transactions = [], loading = false, onUpdate, onEdit }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAssetClass, setFilterAssetClass] = useState('all');
@@ -171,7 +171,7 @@ export default function TransactionLog({ transactions = [], loading = false, onU
                 </th>
                 <th>Nơi lưu trữ</th>
                 <th>Ghi chú</th>
-                <th className="text-center">Xóa</th>
+                <th className="text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -217,7 +217,14 @@ export default function TransactionLog({ transactions = [], loading = false, onU
                         <span className="notes-text">{tx.notes}</span>
                       ) : '—'}
                     </td>
-                    <td className="text-center">
+                    <td className="text-center" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <button
+                        className="btn-icon"
+                        onClick={() => onEdit(tx)}
+                        title="Sửa giao dịch"
+                      >
+                        <Edit size={14} />
+                      </button>
                       <button
                         className="btn-icon btn-icon-danger"
                         onClick={() => handleDelete(tx.id)}

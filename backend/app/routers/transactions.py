@@ -25,6 +25,14 @@ async def create_transaction(tx: TransactionCreate, user: dict = Depends(get_cur
     return APIResponse(data={"id": doc_id})
 
 
+@router.put("/{tx_id}", response_model=APIResponse)
+async def modify_transaction(tx_id: str, tx: TransactionCreate, user: dict = Depends(get_current_user)):
+    """Update an existing transaction."""
+    tx_data = tx.model_dump()
+    fs.update_transaction(user["sub"], user["type"], tx_id, tx_data)
+    return APIResponse(data={"updated": tx_id})
+
+
 @router.delete("/{tx_id}", response_model=APIResponse)
 async def remove_transaction(tx_id: str, user: dict = Depends(get_current_user)):
     """Delete a transaction."""

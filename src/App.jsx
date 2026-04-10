@@ -40,6 +40,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Data state (fetched from backend API)
@@ -201,6 +202,16 @@ export default function App() {
     } catch (err) { alert('Lỗi: ' + err.message); }
   };
 
+  const handleEditTransaction = (tx) => {
+    setEditingTransaction(tx);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingTransaction(null);
+  };
+
   // ============================================================
   // NAV
   // ============================================================
@@ -241,7 +252,13 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <AddTransactionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} funds={funds} onSuccess={refreshData} />
+      <AddTransactionModal 
+        isOpen={isModalOpen} 
+        onClose={handleCloseModal} 
+        funds={funds} 
+        onSuccess={refreshData} 
+        transactionToEdit={editingTransaction} 
+      />
 
       {/* SIDEBAR */}
       <aside className="sidebar">
@@ -427,7 +444,12 @@ export default function App() {
                 {/* Allocation Donut */}
                 {allocationChartData.length > 0 && (
                   <div className="glass-card section-card">
-                    <h3 className="card-title">Phân bổ theo loại tài sản</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 className="card-title" style={{ margin: 0 }}>Phân bổ theo loại tài sản</h3>
+                      <span className="form-hint-cash">
+                        Tổng tiền mặt tại các quỹ: {formatVND(funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0))}
+                      </span>
+                    </div>
                     <AssetAllocationChart data={allocationChartData} size={240} />
                   </div>
                 )}
@@ -559,7 +581,7 @@ export default function App() {
                     <PlusCircle size={18} /> Thêm Giao dịch
                   </button>
                 </div>
-                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} />
+                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} />
               </div>
             )}
 

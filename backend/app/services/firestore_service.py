@@ -40,6 +40,12 @@ def add_transaction(user_id: str, user_type: str, data: dict) -> str:
     return doc_ref.id
 
 
+def update_transaction(user_id: str, user_type: str, tx_id: str, data: dict) -> None:
+    doc = _user_doc(user_id, user_type, "transactions", tx_id)
+    data["updatedAt"] = SERVER_TIMESTAMP
+    doc.update(data)
+
+
 def delete_transaction(user_id: str, user_type: str, tx_id: str) -> None:
     doc = _user_doc(user_id, user_type, "transactions", tx_id)
     doc.delete()
