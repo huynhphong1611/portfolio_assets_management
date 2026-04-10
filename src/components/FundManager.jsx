@@ -143,7 +143,12 @@ export default function FundManager({ funds = [], portfolio = [], transactions =
                   </div>
                   <div>
                     <h3 className="fund-card-name">{fund.name}</h3>
-                    <p className="fund-card-desc">{fund.description}</p>
+                    <p className="fund-card-desc">
+                      {fund.description}
+                      <span style={{ display: 'inline-block', marginLeft: '6px', paddingLeft: '6px', borderLeft: '1px solid var(--border-color)', color: 'var(--text-color)' }}>
+                        Tiền mặt: <strong>{formatVND(fund.cashBalance)}</strong>
+                      </span>
+                    </p>
                   </div>
                 </div>
                 <div className="fund-card-values">

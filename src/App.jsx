@@ -258,6 +258,7 @@ export default function App() {
         funds={funds} 
         onSuccess={refreshData} 
         transactionToEdit={editingTransaction} 
+        portfolio={portfolio}
       />
 
       {/* SIDEBAR */}
@@ -581,7 +582,7 @@ export default function App() {
                     <PlusCircle size={18} /> Thêm Giao dịch
                   </button>
                 </div>
-                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} />
+                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} funds={funds} />
               </div>
             )}
 

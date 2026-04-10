@@ -38,7 +38,7 @@ const initialFormState = {
   fundId: '',
 };
 
-export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuccess, transactionToEdit }) {
+export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuccess, transactionToEdit, portfolio = [] }) {
   const [form, setForm] = useState(initialFormState);
   const [saving, setSaving] = useState(false);
 
@@ -88,12 +88,42 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
       const price = parseFloat(form.unitPrice) || 0;
       const rate = parseFloat(form.exchangeRate) || 1;
       const total = qty * price * rate;
+      const oldTotal = transactionToEdit ? (Math.abs(transactionToEdit.totalVND) || 0) : 0;
 
       // Validate fund cash for "Mua"
       if (form.transactionType === 'Mua' && selectedFund) {
         const fundCash = parseFloat(selectedFund.cashBalance) || 0;
-        if (total > fundCash) {
-          alert(`⚠️ Quỹ "${selectedFund.name}" chỉ còn ${new Intl.NumberFormat('vi-VN').format(fundCash)} VNĐ tiền mặt.\nKhông đủ để mua ${new Intl.NumberFormat('vi-VN').format(total)} VNĐ.\n\nHãy nạp thêm tiền vào quỹ trước.`);
+        if (!transactionToEdit) {
+          if (total > fundCash) {
+            alert(`⚠️ Quỹ "${selectedFund.name}" chỉ còn ${new Intl.NumberFormat('vi-VN').format(fundCash)} VNĐ tiền mặt.\nKhông đủ để mua ${new Intl.NumberFormat('vi-VN').format(total)} VNĐ.\n\nHãy nạp thêm tiền vào quỹ trước.`);
+            setSaving(false);
+            return;
+          }
+        } else {
+          // If editing an existing transaction
+          if (total > oldTotal) {
+            const extraNeeded = total - oldTotal;
+            if (extraNeeded > fundCash) {
+              alert(`⚠️ Không đủ tiền! Quỹ chỉ còn ${new Intl.NumberFormat('vi-VN').format(fundCash)} VNĐ.\nBạn cần thêm ${new Intl.NumberFormat('vi-VN').format(extraNeeded)} VNĐ tiền mặt để tăng giá trị mua.`);
+              setSaving(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Validate quantities for "Bán"
+      if (form.transactionType === 'Bán') {
+        const tickerStr = form.ticker.toUpperCase();
+        const currentHolding = portfolio.find(p => p.ticker === tickerStr)?.quantity || 0;
+        
+        const isSameTicker = transactionToEdit && (transactionToEdit.ticker || '').toUpperCase() === tickerStr;
+        const oldQtyRefund = isSameTicker ? Math.abs(transactionToEdit.quantity || 0) : 0;
+        
+        const availableQty = currentHolding + oldQtyRefund;
+        
+        if (qty > availableQty) {
+          alert(`⚠️ Số lượng bán vượt quá số lượng cổ phiếu đang có!\nHiện có thể bán tối đa: ${availableQty} (đã bao gồm giao dịch đang sửa).\nLượng nhập vào: ${qty}.`);
           setSaving(false);
           return;
         }
@@ -120,21 +150,39 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
 
       if (transactionToEdit) {
         await apiUpdateTransaction(transactionToEdit.id, txData);
+        // Cash correction when keeping the same fund
+        if (selectedFund && form.fundId === transactionToEdit.fundId) {
+          const fundCash = parseFloat(selectedFund.cashBalance) || 0;
+          let newCash = fundCash;
+          const diff = oldTotal - total; // Positive if new total is smaller
+
+          if (form.transactionType === 'Mua') {
+             // If total < oldTotal (diff > 0), newCash = fundCash + diff (Refunds money)
+             // If total > oldTotal (diff < 0), newCash = fundCash + diff (Deducts money)
+             newCash = fundCash + diff;
+          } else if (form.transactionType === 'Bán' || form.transactionType === 'Nạp tiền') {
+             // In Bán/Nạp, oldTotal was ADDED to the fund originally.
+             newCash = fundCash - diff; 
+
+          }
+          if (newCash !== fundCash && newCash >= 0) {
+             await apiUpdateFund(selectedFund.id, { cashBalance: newCash });
+          }
+        }
       } else {
         await apiAddTransaction(txData);
-      }
 
-      // Update fund cash balance (Simplified: recalculate manually for Edit is complex,
-      // so if editing we won't auto-calculate cash to avoid double/wrong logic)
-      if (selectedFund && !transactionToEdit) {
-        const fundCash = parseFloat(selectedFund.cashBalance) || 0;
-        let newCash = fundCash;
-        if (form.transactionType === 'Mua') {
-          newCash = fundCash - total;
-        } else if (form.transactionType === 'Bán') {
-          newCash = fundCash + total;
+        // Deduct/Add fund cash balance for NEW transactions
+        if (selectedFund) {
+          const fundCash = parseFloat(selectedFund.cashBalance) || 0;
+          let newCash = fundCash;
+          if (form.transactionType === 'Mua') {
+            newCash = fundCash - total;
+          } else if (form.transactionType === 'Bán' || form.transactionType === 'Nạp tiền') {
+            newCash = fundCash + total;
+          }
+          await apiUpdateFund(selectedFund.id, { cashBalance: Math.max(0, newCash) });
         }
-        await apiUpdateFund(selectedFund.id, { cashBalance: Math.max(0, newCash) });
       }
 
       setForm({ ...initialFormState, date: now() });
@@ -191,12 +239,26 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
             {selectedFund && (
               <p className="form-hint-cash">
                 💰 Tiền mặt trong quỹ: <strong>{new Intl.NumberFormat('vi-VN').format(selectedFund.cashBalance || 0)} ₫</strong>
-                {form.transactionType === 'Mua' && (
+                {form.transactionType === 'Mua' && !transactionToEdit && (
                   <>
                     {' — '}
                     <span style={{ color: calculatedTotal() > (selectedFund.cashBalance || 0) ? 'var(--color-rose-500)' : 'var(--color-emerald-500)' }}>
                       {calculatedTotal() > (selectedFund.cashBalance || 0) ? '⚠️ Không đủ tiền!' : '✅ Đủ tiền'}
                     </span>
+                  </>
+                )}
+                {form.transactionType === 'Mua' && transactionToEdit && form.fundId === (transactionToEdit.fundId || transactionToEdit.fund_id) && (
+                  <>
+                    {' — '}
+                    {(() => {
+                      const fundCash = parseFloat(selectedFund.cashBalance) || 0;
+                      const extraNeeded = calculatedTotal() - (Math.abs(transactionToEdit.totalVND) || 0);
+                      if (extraNeeded > fundCash) {
+                         return <span style={{ color: 'var(--color-rose-500)' }}>⚠️ Không đủ tiền bù thêm!</span>;
+                      } else {
+                         return <span style={{ color: 'var(--color-emerald-500)' }}>✅ Đủ tiền bù/sửa</span>;
+                      }
+                    })()}
                   </>
                 )}
               </p>
