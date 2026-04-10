@@ -1095,6 +1095,108 @@ body {
   white-space: nowrap;
 }
 
+/* ── Transaction Grouped View ── */
+
+.tx-year-group {
+  margin-bottom: 4px;
+}
+
+.tx-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.tx-group-header:hover {
+  background: var(--color-slate-50);
+}
+
+.tx-year-header {
+  background: var(--color-slate-100);
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 2px;
+}
+
+.tx-month-header {
+  padding-left: 28px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.tx-group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tx-group-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tx-group-year-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.tx-group-month-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tx-group-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--color-slate-100);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.tx-group-total {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-blue-600);
+  font-variant-numeric: tabular-nums;
+}
+
+.tx-month-group {
+  margin-left: 8px;
+  border-left: 2px solid var(--border-light);
+  margin-bottom: 2px;
+}
+
+.tx-grouped-table {
+  margin-bottom: 0;
+}
+
+.tx-grouped-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tx-year-header {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .tx-group-header:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .tx-group-count {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
 
 /* ============================================================
    15. PAGINATION
