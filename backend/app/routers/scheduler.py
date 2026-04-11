@@ -1,8 +1,14 @@
 """
-Scheduler router — Check status and trigger manual runs.
-"""
-from fastapi import APIRouter
+Scheduler router — Check status, trigger manual runs, and external cron endpoint.
 
+Supports dual deployment modes:
+- standalone: APScheduler runs in-process, /run-now for manual triggers
+- serverless: APScheduler disabled, /trigger for external cron (e.g. Google Cloud Scheduler)
+"""
+from fastapi import APIRouter, Header, HTTPException
+from typing import Optional
+
+from app.config import settings
 from app.models.schemas import APIResponse
 from app.services.scheduler import get_scheduler_status, daily_price_snapshot_job
 
@@ -16,14 +22,15 @@ router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
 
 @router.get("/status", response_model=APIResponse)
 async def scheduler_status():
-    """Get current scheduler status and next run time."""
+    """Get current scheduler status, deployment mode, and next run time."""
     status = get_scheduler_status()
+    status["deployment_mode"] = settings.DEPLOYMENT_MODE
     return APIResponse(data=status)
 
 
 @router.post("/run-now", response_model=APIResponse)
 async def trigger_manual_run():
-    """Trigger immediate scheduler run (non-blocking)."""
+    """Trigger immediate scheduler run (non-blocking). Works in both modes."""
     logger.info("🔄 Manual scheduler trigger requested")
 
     # Run in background thread to avoid blocking the API
@@ -37,4 +44,47 @@ async def trigger_manual_run():
     return APIResponse(data={
         "message": "Scheduler job triggered in background",
         "status": "running",
+    })
+
+
+@router.post("/trigger", response_model=APIResponse)
+async def external_cron_trigger(x_cron_key: Optional[str] = Header(None)):
+    """
+    External cron trigger endpoint — designed for serverless deployments.
+
+    Google Cloud Scheduler (or any external cron) sends a POST request here
+    with the secret key in the X-Cron-Key header to authenticate.
+
+    Example Cloud Scheduler config:
+      URL:    https://your-project.web.app/api/scheduler/trigger
+      Method: POST
+      Header: X-Cron-Key: <your-cron-auth-key>
+      Cron:   0 9 * * * (daily at 9:00 AM)
+    """
+    # Authenticate the cron request
+    if not settings.CRON_AUTH_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="CRON_AUTH_KEY not configured. Set it in environment variables.",
+        )
+
+    if x_cron_key != settings.CRON_AUTH_KEY:
+        logger.warning("⚠️ External cron trigger: invalid or missing X-Cron-Key")
+        raise HTTPException(status_code=403, detail="Invalid cron authentication key")
+
+    logger.info("🕘 External cron trigger: authenticated, starting daily job...")
+
+    # Run in background thread so we can return 200 quickly
+    # (Cloud Scheduler has a timeout, we don't want to exceed it)
+    thread = threading.Thread(
+        target=daily_price_snapshot_job,
+        name="external_cron_run",
+        daemon=True,
+    )
+    thread.start()
+
+    return APIResponse(data={
+        "message": "Daily job triggered via external cron",
+        "status": "running",
+        "deployment_mode": settings.DEPLOYMENT_MODE,
     })

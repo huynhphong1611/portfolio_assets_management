@@ -29,6 +29,15 @@ class Settings:
     VNSTOCK_API_KEY: str = os.getenv("VNSTOCK_API_KEY", "")
     COINGECKO_API_KEY: str = os.getenv("COINGECKO_API_KEY", "")
 
+    # Deployment mode: "standalone" (VPS/local) or "serverless" (Cloud Run/Functions)
+    # - standalone: APScheduler runs in-process as background thread
+    # - serverless: APScheduler disabled, use external cron (e.g. Google Cloud Scheduler)
+    DEPLOYMENT_MODE: str = os.getenv("DEPLOYMENT_MODE", "standalone").lower()
+
+    # Secret key for external cron trigger endpoint (serverless mode)
+    # External scheduler must send this key to authenticate cron requests
+    CRON_AUTH_KEY: str = os.getenv("CRON_AUTH_KEY", os.getenv("JWT_SECRET", ""))
+
     # App
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     CORS_ORIGINS: list = [
@@ -36,6 +45,11 @@ class Settings:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
     ]
+
+    @property
+    def is_serverless(self) -> bool:
+        """Check if running in serverless mode."""
+        return self.DEPLOYMENT_MODE == "serverless"
 
 
 settings = Settings()

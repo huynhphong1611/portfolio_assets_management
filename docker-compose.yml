@@ -32,6 +32,10 @@ services:
     env_file:
       - .env
     environment:
+      - DEPLOYMENT_MODE=standalone
+      - PORT=8000
       - VNSTOCK_API_ENABLED=${VNSTOCK_API_ENABLED:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FIREBASE_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
+    # Override CMD for local dev with hot-reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

@@ -82,23 +82,29 @@ app.include_router(scheduler_router.router)
 
 @app.on_event("startup")
 def startup_event():
-    """Start the background scheduler on app startup."""
-    try:
-        from app.services.scheduler import start_scheduler
-        start_scheduler()
-        logger.info("✅ Background scheduler started")
-    except Exception as e:
-        logger.error(f"❌ Failed to start scheduler: {e}", exc_info=True)
+    """Start the background scheduler on app startup (standalone mode only)."""
+    logger.info(f"🚀 Deployment mode: {settings.DEPLOYMENT_MODE.upper()}")
+
+    if settings.is_serverless:
+        logger.info("⚡ Serverless mode: APScheduler disabled. Use external cron via POST /api/scheduler/trigger")
+    else:
+        try:
+            from app.services.scheduler import start_scheduler
+            start_scheduler()
+            logger.info("✅ Standalone mode: APScheduler background scheduler started")
+        except Exception as e:
+            logger.error(f"❌ Failed to start scheduler: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    """Stop the scheduler on shutdown."""
-    try:
-        from app.services.scheduler import stop_scheduler
-        stop_scheduler()
-    except Exception:
-        pass
+    """Stop the scheduler on shutdown (standalone mode only)."""
+    if not settings.is_serverless:
+        try:
+            from app.services.scheduler import stop_scheduler
+            stop_scheduler()
+        except Exception:
+            pass
 
 # ── Health Check ──
 
@@ -108,6 +114,7 @@ def health():
     return {
         "status": "ok",
         "api_enabled": settings.VNSTOCK_API_ENABLED,
+        "deployment_mode": settings.DEPLOYMENT_MODE,
         "timestamp": datetime.now().isoformat(),
         "version": "2.0.0",
     }
@@ -136,5 +143,7 @@ def api_status():
 
     return {
         "enabled": settings.VNSTOCK_API_ENABLED,
+        "deployment_mode": settings.DEPLOYMENT_MODE,
         "checks": checks,
     }
+

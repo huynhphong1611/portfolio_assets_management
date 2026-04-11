@@ -197,10 +197,24 @@ def stop_scheduler():
 
 def get_scheduler_status() -> dict:
     """Get current scheduler status."""
+    from app.config import settings
+
+    if settings.is_serverless:
+        return {
+            "running": False,
+            "mode": "serverless",
+            "next_run": None,
+            "timezone": "Asia/Ho_Chi_Minh",
+            "schedule": "Managed by external cron (e.g. Google Cloud Scheduler)",
+            "trigger_endpoint": "POST /api/scheduler/trigger",
+        }
+
     job = scheduler.get_job("daily_price_snapshot") if scheduler.running else None
     return {
         "running": scheduler.running,
+        "mode": "standalone",
         "next_run": str(job.next_run_time) if job else None,
         "timezone": "Asia/Ho_Chi_Minh",
         "schedule": "Daily at 09:00",
     }
+
