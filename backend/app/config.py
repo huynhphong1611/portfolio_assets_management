@@ -35,8 +35,9 @@ class Settings:
     DEPLOYMENT_MODE: str = os.getenv("DEPLOYMENT_MODE", "standalone").lower()
 
     # Secret key for external cron trigger endpoint (serverless mode)
-    # External scheduler must send this key to authenticate cron requests
-    CRON_AUTH_KEY: str = os.getenv("CRON_AUTH_KEY", os.getenv("JWT_SECRET", ""))
+    # MUST be set separately from JWT_SECRET — never share the same value.
+    # If not set, the /trigger endpoint will return 500 (fail securely).
+    CRON_AUTH_KEY: str = os.getenv("CRON_AUTH_KEY", "")
 
     # App
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

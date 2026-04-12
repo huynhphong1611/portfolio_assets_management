@@ -27,28 +27,56 @@ def _get_all_user_ids() -> list[dict]:
     """
     Get all user IDs that have data.
     Guest users are found via the 'users' auth collection.
-    Firebase users are found via 'system_users' collection.
+    Firebase users are found via Firebase Admin Auth SDK + Firestore fallback.
     Returns list of {user_id, user_type}.
     """
     from app.firebase_init import get_db
     db = get_db()
     users = []
+    seen_ids = set()
 
     # Guest users — registered in 'users' collection, data in 'guest_users/{id}/...'
     try:
         auth_docs = db.collection("users").stream()
         for doc in auth_docs:
             users.append({"user_id": doc.id, "user_type": "guest"})
+            seen_ids.add(doc.id)
+        logger.info(f"  Found {len(users)} guest users from 'users' collection")
     except Exception as e:
         logger.error(f"Error listing guest users from 'users' collection: {e}")
 
-    # System (Firebase auth) users — data in 'system_users/{uid}/...'
+    # System (Firebase Auth) users — discovered via Firebase Admin Auth SDK.
+    # Firestore parent docs under system_users/{uid} may not exist if only
+    # sub-collections were created, so we use Admin Auth as primary source.
+    system_count = 0
     try:
-        system_docs = db.collection("system_users").stream()
-        for doc in system_docs:
-            users.append({"user_id": doc.id, "user_type": "firebase"})
+        from app.firebase_init import get_firebase_auth
+        firebase_auth = get_firebase_auth()
+        # list_users returns paginated results; iterate all pages
+        page = firebase_auth.list_users()
+        while page:
+            for firebase_user in page.users:
+                uid = firebase_user.uid
+                if uid not in seen_ids:
+                    users.append({"user_id": uid, "user_type": "firebase"})
+                    seen_ids.add(uid)
+                    system_count += 1
+            page = page.get_next_page()
+        logger.info(f"  Found {system_count} system users from Firebase Auth")
     except Exception as e:
-        logger.error(f"Error listing system users: {e}")
+        logger.error(f"Error listing Firebase Auth users: {e}")
+        # Fallback: try listing system_users collection documents
+        logger.info("  Falling back to Firestore 'system_users' collection scan...")
+        try:
+            system_docs = db.collection("system_users").stream()
+            for doc in system_docs:
+                if doc.id not in seen_ids:
+                    users.append({"user_id": doc.id, "user_type": "firebase"})
+                    seen_ids.add(doc.id)
+                    system_count += 1
+            logger.info(f"  Fallback found {system_count} system users from Firestore")
+        except Exception as e2:
+            logger.error(f"Error in fallback system user listing: {e2}")
 
     return users
 

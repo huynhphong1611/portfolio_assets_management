@@ -55,11 +55,18 @@ async def external_cron_trigger(x_cron_key: Optional[str] = Header(None)):
     Google Cloud Scheduler (or any external cron) sends a POST request here
     with the secret key in the X-Cron-Key header to authenticate.
 
+    IMPORTANT: Runs SYNCHRONOUSLY so that Cloud Run keeps the container alive
+    until the job finishes. Daemon threads get killed when Cloud Run scales
+    down after the HTTP response is sent.
+
+    Cloud Scheduler supports up to 30 min timeout — more than enough.
+
     Example Cloud Scheduler config:
-      URL:    https://your-project.web.app/api/scheduler/trigger
+      URL:    https://your-cloud-run-url/api/scheduler/trigger
       Method: POST
       Header: X-Cron-Key: <your-cron-auth-key>
       Cron:   0 9 * * * (daily at 9:00 AM)
+      Timeout: 300s (5 minutes recommended)
     """
     # Authenticate the cron request
     if not settings.CRON_AUTH_KEY:
@@ -74,17 +81,19 @@ async def external_cron_trigger(x_cron_key: Optional[str] = Header(None)):
 
     logger.info("🕘 External cron trigger: authenticated, starting daily job...")
 
-    # Run in background thread so we can return 200 quickly
-    # (Cloud Scheduler has a timeout, we don't want to exceed it)
-    thread = threading.Thread(
-        target=daily_price_snapshot_job,
-        name="external_cron_run",
-        daemon=True,
-    )
-    thread.start()
-
-    return APIResponse(data={
-        "message": "Daily job triggered via external cron",
-        "status": "running",
-        "deployment_mode": settings.DEPLOYMENT_MODE,
-    })
+    # Run SYNCHRONOUSLY — Cloud Run keeps the container alive while
+    # the request is in progress. Using a daemon thread here would risk
+    # the container being killed before the job completes.
+    try:
+        daily_price_snapshot_job()
+        return APIResponse(data={
+            "message": "Daily job completed successfully",
+            "status": "done",
+            "deployment_mode": settings.DEPLOYMENT_MODE,
+        })
+    except Exception as e:
+        logger.error(f"❌ Daily job failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Daily job failed: {str(e)}",
+        )

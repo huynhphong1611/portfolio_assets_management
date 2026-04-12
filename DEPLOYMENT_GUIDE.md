@@ -83,19 +83,22 @@ Vì `.gitignore` đã ngăn 2 file nhạy cảm này được đẩy lên GitHub
 Đây là bước bắt buộc giúp "thợ xây" (Cloud Build) của Google có đủ quyền đóng gói code của bạn. Nếu bỏ qua bước này, bước Deploy Backend sẽ báo lỗi `PERMISSION_DENIED`.
 
 ```bash
+# Lấy PROJECT_NUMBER bằng lệnh:
+# gcloud projects describe <YOUR_PROJECT_ID> --format='value(projectNumber)'
+
 # Cấp quyền Build
-gcloud projects add-iam-policy-binding portfoliomanagement-d237b \
-  --member="serviceAccount:620121069057-compute@developer.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
   --role="roles/cloudbuild.builds.builder"
 
 # Cấp quyền đọc/ghi Storage (để lưu trữ file nén khi deploy)
-gcloud projects add-iam-policy-binding portfoliomanagement-d237b \
-  --member="serviceAccount:620121069057-compute@developer.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
   --role="roles/storage.admin"
 
 # Cấp quyền đọc Firestore (để Backend kết nối được Database)
-gcloud projects add-iam-policy-binding portfoliomanagement-d237b \
-  --member="serviceAccount:620121069057-compute@developer.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding <YOUR_PROJECT_ID> \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
   --role="roles/datastore.user"
 ```
 
@@ -127,13 +130,13 @@ gcloud run deploy fastapi-backend \
 **✅ Dấu hiệu thành công:**
 ```
 Service [fastapi-backend] revision [...] has been deployed and is serving 100% of traffic.
-Service URL: https://fastapi-backend-620121069057.asia-southeast1.run.app
+Service URL: https://fastapi-backend-<HASH>-<REGION_CODE>.a.run.app
 ```
-> 📌 **Lưu lại URL này!** Ví dụ: `https://fastapi-backend-620121069057.asia-southeast1.run.app`
+> 📌 **Lưu lại URL này!** Copy URL từ output lệnh deploy — URL này là duy nhất của project bạn.
 
 **Kiểm tra Backend đã sống chưa:**
 ```bash
-curl https://fastapi-backend-620121069057.asia-southeast1.run.app/
+curl https://fastapi-backend-<HASH>-<REGION_CODE>.a.run.app/
 # Kết quả mong đợi: {"status":"ok","deployment_mode":"serverless",...}
 ```
 
@@ -208,16 +211,16 @@ echo "✅ Đã dọn dẹp xong. Server đã nhớ sẵn cấu hình rồi!"
 | **Frequency** | `0 9 * * *` |
 | **Timezone** | `Asia/Ho_Chi_Minh` |
 | **Target type** | `HTTP` |
-| **URL** | `https://portfoliomanagement-d237b.web.app/api/scheduler/trigger` |
+| **URL** | `https://fastapi-backend-<HASH>-as.a.run.app/api/scheduler/trigger` |
 | **HTTP method** | `POST` |
 | **Header Name** | `X-Cron-Key` |
-| **Header Value** | [Dán giá trị `JWT_SECRET` từ file `.env` ở máy tính của bạn] |
+| **Header Value** | [Giá trị `CRON_AUTH_KEY` trong file `.env` của bạn — KHÔNG phải JWT_SECRET] |
+| **Attempt deadline** | `300s` (5 phút — vì endpoint chạy đồng bộ, cần đủ thời gian để xử lý xong) |
 
-3.  Nhấn **CREATE**.
-4.  Sau khi tạo xong, nhấn **Force Run** để chạy thử ngay.
-5.  Chờ 10 giây rồi nhìn cột **Last run result**:
-    *   🟢 `Success` = Hoàn hảo!
-    *   🔴 `Failed` = Kiểm tra lại giá trị `X-Cron-Key` có khớp với `JWT_SECRET` trong Backend không.
+> ⚠️ **Lưu ý bảo mật**: 
+> - URL phải trỏ **thẳng** đến Cloud Run, **KHÔNG** qua Firebase Hosting (timeout 60s).
+> - **KHÔNG** lưu URL Cloud Run thật vào file này nếu repo là public — ghi vào private notes riêng.
+> - `X-Cron-Key` phải là giá trị `CRON_AUTH_KEY` riêng biệt, không dùng chung `JWT_SECRET`.
 
 ---
 
