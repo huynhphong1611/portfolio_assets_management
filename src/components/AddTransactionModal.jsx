@@ -115,7 +115,7 @@ export default function AddTransactionModal({ isOpen, onClose, funds = [], onSuc
       // Validate quantities for "Bán"
       if (form.transactionType === 'Bán') {
         const tickerStr = form.ticker.toUpperCase();
-        const currentHolding = portfolio.find(p => p.ticker === tickerStr)?.quantity || 0;
+        const currentHolding = portfolio.find(p => p.ticker === tickerStr)?.qty || 0;
         
         const isSameTicker = transactionToEdit && (transactionToEdit.ticker || '').toUpperCase() === tickerStr;
         const oldQtyRefund = isSameTicker ? Math.abs(transactionToEdit.quantity || 0) : 0;
