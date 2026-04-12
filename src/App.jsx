@@ -315,6 +315,23 @@ export default function App() {
                 {item.icon} {item.label}
               </button>
             ))}
+            
+            <div style={{ borderTop: '1px solid var(--border-color)', margin: '10px 1rem 5px 1rem', paddingTop: '10px' }}>
+              <div style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                User: <strong style={{ color: 'var(--text-main)' }}>{currentUser.username}</strong>
+              </div>
+              <button className="nav-item" onClick={logout} style={{ color: 'var(--color-rose-400)' }}>
+                <LogOut size={20} /> Đăng xuất
+              </button>
+              {transactions.length === 0 && (
+                <button className="nav-item" onClick={() => { handleImportCSV(); setIsMobileMenuOpen(false); }} disabled={importing}>
+                  {importing ? <><Loader2 size={20} className="spin" /> Đang import...</> : <><Upload size={20} /> Import CSV</>}
+                </button>
+              )}
+              <button className="nav-item" onClick={() => { handleManualSnapshot(); setIsMobileMenuOpen(false); }}>
+                <Camera size={20} /> Snapshot hôm nay
+              </button>
+            </div>
           </div>
         )}
 
