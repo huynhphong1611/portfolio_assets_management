@@ -87,9 +87,10 @@ async def save_daily_prices(req: DailyPricesCreate,
 
     # Sync to global market prices
     market_update = {}
+    stablecoin_tickers = {'USDT', 'USDC'}
     for ticker, price_val in req.prices.items():
         if ticker and price_val is not None:
-            if ticker == "USDT":
+            if ticker in stablecoin_tickers:
                 market_update[ticker] = {
                     "price": 1,
                     "exchangeRate": price_val,
@@ -136,3 +137,27 @@ async def get_benchmarks(days: int = Query(90, description="Number of days")):
     """Get history data for benchmarks (VNINDEX, BTC)."""
     data = price_service.get_benchmark_history(days)
     return APIResponse(data=data)
+
+
+@router.get("/stablecoin-rate", response_model=APIResponse)
+async def get_stablecoin_rate(
+    symbol: str = Query("USDT", description="Stablecoin ticker: USDT or USDC"),
+):
+    """Get stablecoin (USDT/USDC) exchange rate to VND via CoinGecko."""
+    symbol = symbol.strip().upper()
+    if symbol not in {"USDT", "USDC"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported stablecoin: {symbol}")
+
+    result = price_service.get_stablecoin_vnd_rate(symbol)
+    if result is None:
+        raise HTTPException(status_code=503, detail=f"Cannot fetch {symbol} VND rate")
+    return APIResponse(data=result)
+
+
+@router.get("/gold-sjc", response_model=APIResponse)
+async def get_gold_sjc():
+    """Get SJC gold price (per lượng) from vang.today API."""
+    result = price_service.get_gold_sjc_price()
+    if result is None:
+        raise HTTPException(status_code=503, detail="Cannot fetch SJC gold price")
+    return APIResponse(data=result)

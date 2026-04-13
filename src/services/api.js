@@ -215,6 +215,14 @@ export async function apiGetBenchmarkHistory(days = 90) {
   return requestData(`/prices/benchmarks/history?days=${days}`);
 }
 
+export async function apiGetStablecoinRate(symbol = 'USDT') {
+  return requestData(`/prices/stablecoin-rate?symbol=${encodeURIComponent(symbol)}`);
+}
+
+export async function apiGetGoldSjcPrice() {
+  return requestData('/prices/gold-sjc');
+}
+
 // ── Snapshots API ──
 
 export async function apiGetSnapshots() {

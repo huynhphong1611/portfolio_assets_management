@@ -133,13 +133,24 @@ def daily_price_snapshot_job():
 
     # Update global market prices
     market_update = {}
+    stablecoin_tickers = {"USDT", "USDC"}
     for ticker, result in price_results.items():
-        if ticker == "USDT":
+        if ticker in stablecoin_tickers:
+            # Stablecoins: price=1 (in USD), exchangeRate=VND rate
             market_update[ticker] = {
                 "price": 1,
                 "exchangeRate": result.get("price", 1),
                 "date": today,
                 "source": result.get("source", "auto"),
+            }
+        elif ticker == "GOLD":
+            # Gold SJC: price in VND per lượng
+            market_update[ticker] = {
+                "price": result.get("price", 0),
+                "buy": result.get("buy", 0),
+                "sell": result.get("sell", 0),
+                "date": today,
+                "source": result.get("source", "vang.today"),
             }
         else:
             market_update[ticker] = {

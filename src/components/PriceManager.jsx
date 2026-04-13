@@ -9,7 +9,8 @@ import { formatNum } from '../utils/formatters';
  */
 const BASE_ITEMS = [
   { key: 'USDT', label: 'USDT / VNĐ', unit: 'VNĐ', category: 'Tỷ giá', defaultPrice: 26500 },
-  { key: 'GOLD', label: 'Vàng SJC / Chỉ', unit: 'VNĐ', category: 'Vàng', defaultPrice: 17650000 },
+  { key: 'USDC', label: 'USDC / VNĐ', unit: 'VNĐ', category: 'Tỷ giá', defaultPrice: 26500 },
+  { key: 'GOLD', label: 'Vàng SJC / Lượng', unit: 'VNĐ', category: 'Vàng', defaultPrice: 17650000 },
 ];
 
 /**
@@ -36,7 +37,7 @@ function buildPriceItems(transactions = []) {
   // Extract unique tickers from transactions (skip cash deposits)
   transactions.forEach(tx => {
     const ticker = tx.ticker;
-    if (!ticker || ticker === 'VNĐ' || ticker === 'USDT') return;
+    if (!ticker || ticker === 'VNĐ' || ticker === 'USDT' || ticker === 'USDC') return;
     if (tickerMap[ticker]) return;
 
     const assetClass = tx.assetClass || '';
@@ -106,9 +107,10 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
 
       // Sync to marketPrices
       const marketPricesMap = {};
+      const stablecoinKeys = new Set(['USDT', 'USDC']);
       priceItems.forEach(item => {
         if (prices[item.key]) {
-          if (item.key === 'USDT') {
+          if (stablecoinKeys.has(item.key)) {
             marketPricesMap[item.key] = { price: 1, exchangeRate: prices[item.key] };
           } else {
             marketPricesMap[item.key] = { price: prices[item.key] };
@@ -134,36 +136,61 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
     }
     setFetching(true);
     try {
-      // Collect all tickers except USDT (exchange rate) and GOLD (manual)
-      const symbols = priceItems
-        .filter(p => p.key !== 'USDT' && p.key !== 'GOLD')
-        .map(p => p.key);
-
-      if (symbols.length === 0) {
-        alert('Không có mã tài sản nào để lấy giá.');
-        setFetching(false);
-        return;
-      }
-
-      const response = await fetch(`/api/prices/stocks?symbols=${symbols.join(',')}&target_date=${selectedDate}`);
-      if (!response.ok) throw new Error('API không phản hồi');
-      const data = await response.json();
-
       const newPrices = { ...prices };
       let hasRateLimit = false;
-      data.forEach(item => {
-        if (item.symbol === 'USDT') return;
-        if (item.error && item.error.includes('RATE_LIMIT_ERROR')) {
-          hasRateLimit = true;
+
+      // 1. Fetch USDT & USDC VND rates from CoinGecko via backend
+      for (const stablecoin of ['USDT', 'USDC']) {
+        try {
+          const rateResp = await fetch(`/api/prices/stablecoin-rate?symbol=${stablecoin}`);
+          if (rateResp.ok) {
+            const rateData = await rateResp.json();
+            if (rateData.success && rateData.data?.price) {
+              newPrices[stablecoin] = rateData.data.price;
+            }
+          }
+        } catch (e) {
+          console.warn(`Failed to fetch ${stablecoin} rate:`, e);
         }
-        if (item.price) newPrices[item.symbol] = item.price;
-      });
+      }
+
+      // 2. Fetch GOLD SJC price from vang.today via backend
+      try {
+        const goldResp = await fetch('/api/prices/gold-sjc');
+        if (goldResp.ok) {
+          const goldData = await goldResp.json();
+          if (goldData.success && goldData.data?.price) {
+            newPrices['GOLD'] = goldData.data.price;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch GOLD SJC price:', e);
+      }
+
+      // 3. Fetch all other tickers (stocks, funds, crypto) via batch API
+      const symbols = priceItems
+        .filter(p => p.key !== 'USDT' && p.key !== 'USDC' && p.key !== 'GOLD')
+        .map(p => p.key);
+
+      if (symbols.length > 0) {
+        const response = await fetch(`/api/prices/stocks?symbols=${symbols.join(',')}&target_date=${selectedDate}`);
+        if (!response.ok) throw new Error('API không phản hồi');
+        const data = await response.json();
+
+        data.forEach(item => {
+          if (item.error && item.error.includes('RATE_LIMIT_ERROR')) {
+            hasRateLimit = true;
+          }
+          if (item.price) newPrices[item.symbol] = item.price;
+        });
+      }
+
       setPrices(newPrices);
 
       if (hasRateLimit) {
         alert('⚠️ API đạt giới hạn tải dữ liệu (Rate Limit). Một số mã bị thiếu. Đợi 1 phút rồi thử lại.');
       } else {
-        alert('✅ Đã lấy giá tự động từ API (vnstock & CoinGecko)!');
+        alert('✅ Đã lấy giá tự động từ API (vnstock, CoinGecko & vàng SJC)!');
       }
     } catch (err) {
       console.error(err);

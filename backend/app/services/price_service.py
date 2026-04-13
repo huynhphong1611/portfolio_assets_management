@@ -23,6 +23,13 @@ FUND_SYMBOLS = {
     "TCBF", "VIBF", "VFMVSF", "VFMVF1", "VFMVF4", "HDBOND"
 }
 
+# Stablecoins that should be priced in VND (exchange rate)
+STABLECOIN_TICKERS = {"USDT", "USDC"}
+STABLECOIN_COINGECKO_IDS = {"USDT": "tether", "USDC": "usd-coin"}
+
+# Gold SJC ticker
+GOLD_TICKER = "GOLD"
+
 # Known crypto ticker → CoinGecko ID mappings
 CRYPTO_MAPPING = {
     "BTC": "bitcoin",
@@ -286,6 +293,78 @@ def get_crypto_price_coingecko(symbol: str,
     return None
 
 
+def get_stablecoin_vnd_rate(symbol: str) -> Optional[dict]:
+    """
+    Get stablecoin (USDT/USDC) exchange rate to VND via CoinGecko.
+    Returns the VND price for 1 unit of the stablecoin.
+    """
+    symbol_upper = symbol.upper()
+    coin_id = STABLECOIN_COINGECKO_IDS.get(symbol_upper)
+    if not coin_id:
+        logger.warning(f"  ⚠️ {symbol_upper} is not a known stablecoin")
+        return None
+
+    headers = {}
+    if settings.COINGECKO_API_KEY:
+        headers["x-cg-demo-api-key"] = settings.COINGECKO_API_KEY
+
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {"ids": coin_id, "vs_currencies": "vnd"}
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        data = resp.json()
+
+        if resp.status_code == 200 and coin_id in data:
+            vnd_rate = float(data[coin_id].get("vnd", 0))
+            logger.info(f"  ✅ {symbol_upper} = {vnd_rate:,.0f} VNĐ (CoinGecko)")
+            return {
+                "symbol": symbol_upper,
+                "price": vnd_rate,
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "source": "CoinGecko",
+                "type": "stablecoin",
+            }
+        else:
+            logger.warning(f"  ⚠️ CoinGecko VND rate fail {resp.status_code}: {data}")
+    except Exception as e:
+        logger.warning(f"  ⚠️ CoinGecko VND rate failed for {symbol_upper}: {e}")
+
+    return None
+
+
+def get_gold_sjc_price() -> Optional[dict]:
+    """
+    Get SJC gold price (per lượng) from vang.today API.
+    Returns buy/sell prices. Uses 'sell' as the market price.
+    """
+    try:
+        url = "https://www.vang.today/api/prices?type=SJL1L10"
+        resp = requests.get(url, timeout=15)
+        data = resp.json()
+
+        if resp.status_code == 200 and data.get("success"):
+            sell_price = float(data.get("sell", 0))
+            buy_price = float(data.get("buy", 0))
+            date = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+            logger.info(f"  ✅ GOLD SJC = buy:{buy_price:,.0f} / sell:{sell_price:,.0f} VNĐ/lượng")
+            return {
+                "symbol": "GOLD",
+                "price": sell_price,
+                "buy": buy_price,
+                "sell": sell_price,
+                "date": date,
+                "source": "vang.today",
+                "type": "gold",
+            }
+        else:
+            logger.warning(f"  ⚠️ Gold SJC API fail {resp.status_code}: {data}")
+    except Exception as e:
+        logger.warning(f"  ⚠️ Gold SJC request failed: {e}")
+
+    return None
+
+
+
 def is_crypto_ticker(symbol: str) -> bool:
     """Check if a symbol is a crypto ticker (in mapping or looks like crypto)."""
     s = symbol.upper()
@@ -300,11 +379,21 @@ def is_crypto_ticker(symbol: str) -> bool:
 def get_price(symbol: str, source: str = "VCI",
               target_date: str = None) -> Optional[dict]:
     """
-    Unified price fetcher — auto-detects asset type (fund/crypto/stock).
+    Unified price fetcher — auto-detects asset type (fund/crypto/stock/stablecoin/gold).
     For unknown tickers, tries CoinGecko auto-detect before falling back to stock.
     """
     symbol = symbol.strip().upper()
     logger.info(f"📈 Fetching price for {symbol} (date: {target_date or 'latest'})")
+
+    # Stablecoins (USDT, USDC) — get VND exchange rate
+    if symbol in STABLECOIN_TICKERS:
+        logger.info(f"  💱 {symbol} → CoinGecko VND rate")
+        return get_stablecoin_vnd_rate(symbol)
+
+    # Gold SJC
+    if symbol == GOLD_TICKER:
+        logger.info(f"  🥇 {symbol} → vang.today API")
+        return get_gold_sjc_price()
 
     if symbol in FUND_SYMBOLS:
         logger.info(f"  🏦 {symbol} → Fund module")
@@ -333,9 +422,17 @@ def fetch_all_portfolio_prices(tickers: list, target_date: str = None) -> dict:
     Batch fetch prices for a list of tickers.
     Returns {ticker: price_result_dict}.
     Used by the scheduler for automated daily price fetching.
+
+    Always fetches USDT, USDC (VND rate) and GOLD (SJC) regardless of
+    whether they appear in the tickers list, so market prices stay current.
     """
     results = {}
-    for ticker in tickers:
+
+    # Always fetch stablecoin rates and gold price
+    always_fetch = set(STABLECOIN_TICKERS) | {GOLD_TICKER}
+    all_tickers = list(dict.fromkeys(list(always_fetch) + list(tickers)))
+
+    for ticker in all_tickers:
         if ticker in ("VNĐ", "USDT_RATE"):
             continue
         try:

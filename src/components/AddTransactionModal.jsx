@@ -17,7 +17,7 @@ const TX_TYPES = [
   { value: 'Bán', label: 'Bán', color: 'rose', icon: <TrendingDown size={16} /> },
 ];
 
-const CURRENCIES = ['VNĐ', 'USDT'];
+const CURRENCIES = ['VNĐ', 'USDT', 'USDC'];
 
 const now = () => {
   const d = new Date();
