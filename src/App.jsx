@@ -137,7 +137,7 @@ export default function App() {
   const portfolio = useMemo(() => calculatePortfolio(holdings, marketPrices), [holdings, marketPrices]);
   const netWorth = useMemo(() => calculateNetWorth(portfolio, externalAssets, liabilities), [portfolio, externalAssets, liabilities]);
   const rebalanceData = useMemo(() => calculateRebalance(portfolio, rebalanceTargets), [portfolio, rebalanceTargets]);
-  const pnlSummary = useMemo(() => calculateTotalPnL(portfolio), [portfolio]);
+  const pnlSummary = useMemo(() => calculateTotalPnL(portfolio, funds), [portfolio, funds]);
 
   // Growth chart data from snapshots
   const growthChartData = useMemo(() => {

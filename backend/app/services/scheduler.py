@@ -181,6 +181,12 @@ def daily_price_snapshot_job():
             for ticker in tickers:
                 if ticker in price_results:
                     daily_prices_dict[ticker] = price_results[ticker].get("price", 0)
+                else:
+                    # Fallback to latest known market price if API fetch failed
+                    last_known = market_prices.get(ticker, {})
+                    fallback_price = last_known.get("exchangeRate") or last_known.get("price", 0)
+                    daily_prices_dict[ticker] = fallback_price
+                    logger.warning(f"  ⚠️ User {uid}: API fetch failed for {ticker}, using fallback: {fallback_price}")
 
             # Save daily prices
             if daily_prices_dict:

@@ -100,27 +100,29 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
   // Auto-load on mount / date change
   useMemo(() => { loadPrices(); }, [selectedDate, dailyPrices.length, priceItems.length]);
 
-  const handleSave = async () => {
+  const handleSave = async (pricesToSave = prices, isAutoSave = false) => {
     setSaving(true);
     try {
-      await apiSaveDailyPrices(selectedDate, prices);
+      await apiSaveDailyPrices(selectedDate, pricesToSave);
 
       // Sync to marketPrices
       const marketPricesMap = {};
       const stablecoinKeys = new Set(['USDT', 'USDC']);
       priceItems.forEach(item => {
-        if (prices[item.key]) {
+        if (pricesToSave[item.key]) {
           if (stablecoinKeys.has(item.key)) {
-            marketPricesMap[item.key] = { price: 1, exchangeRate: prices[item.key] };
+            marketPricesMap[item.key] = { price: 1, exchangeRate: pricesToSave[item.key] };
           } else {
-            marketPricesMap[item.key] = { price: prices[item.key] };
+            marketPricesMap[item.key] = { price: pricesToSave[item.key] };
           }
         }
       });
       await apiSaveMarketPrices(marketPricesMap);
 
       if (onUpdate) onUpdate();
-      alert('✅ Đã lưu bảng giá ngày ' + selectedDate + ' và cập nhật giá thị trường.');
+      if (!isAutoSave) {
+        alert('✅ Đã lưu bảng giá ngày ' + selectedDate + ' và cập nhật giá thị trường.');
+      }
     } catch (err) {
       console.error(err);
       alert('Lỗi khi lưu giá.');
@@ -186,11 +188,12 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
       }
 
       setPrices(newPrices);
+      await handleSave(newPrices, true);
 
       if (hasRateLimit) {
-        alert('⚠️ API đạt giới hạn tải dữ liệu (Rate Limit). Một số mã bị thiếu. Đợi 1 phút rồi thử lại.');
+        alert('⚠️ API đạt giới hạn tải dữ liệu (Rate Limit). Một số mã bị thiếu.\n✅ Đối với các mã lấy được, hệ thống ĐÃ TỰ ĐỘNG LƯU.');
       } else {
-        alert('✅ Đã lấy giá tự động từ API (vnstock, CoinGecko & vàng SJC)!');
+        alert('✅ Đã lấy giá tự động từ API và TỰ ĐỘNG LƯU bảng giá thành công!');
       }
     } catch (err) {
       console.error(err);
@@ -248,7 +251,7 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
             {fetching ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
             Lấy giá từ API
           </button>
-          <button className="btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+          <button className="btn-primary btn-sm" onClick={() => handleSave()} disabled={saving}>
             <Save size={14} />
             {saving ? 'Đang lưu...' : 'Lưu bảng giá'}
           </button>

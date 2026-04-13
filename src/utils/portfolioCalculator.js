@@ -241,13 +241,19 @@ export function calculateRebalance(portfolio, targetWeights = {}) {
 // CALCULATE TOTAL P&L
 // ============================================================
 
-export function calculateTotalPnL(portfolio) {
+export function calculateTotalPnL(portfolio, funds = []) {
   const investItems = portfolio.filter(p => p.assetClass !== 'Tiền mặt VNĐ');
-  const totalValue = investItems.reduce((sum, p) => sum + p.actualValue, 0);
-  const totalCost = investItems.reduce((sum, p) => sum + p.totalCost, 0);
+  let totalValue = investItems.reduce((sum, p) => sum + p.actualValue, 0);
+  let totalCost = investItems.reduce((sum, p) => sum + p.totalCost, 0);
+
+  // Add fund cash balances to total value and total cost
+  const totalFundCash = funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0);
+  totalValue += totalFundCash;
+  totalCost += totalFundCash;
+
   const totalPnL = totalValue - totalCost;
   const totalPnLPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
-  return { totalValue, totalCost, totalPnL, totalPnLPercent };
+  return { totalValue, totalCost, totalPnL, totalPnLPercent, totalFundCash };
 }
 
 // ============================================================
