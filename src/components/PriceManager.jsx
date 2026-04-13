@@ -79,20 +79,28 @@ export default function PriceManager({ dailyPrices = [], transactions = [], apiE
 
   // Load prices for selected date or latest
   const loadPrices = async () => {
+    const sanitizePrices = (p) => {
+      const sanitized = { ...p };
+      ['USDT', 'USDC'].forEach(coin => {
+        if (sanitized[coin] && sanitized[coin] < 10000) sanitized[coin] = 25500;
+      });
+      return sanitized;
+    };
+
     const existing = dailyPrices.find(dp => dp.date === selectedDate);
     if (existing && existing.prices) {
-      setPrices(existing.prices);
+      setPrices(sanitizePrices(existing.prices));
       setLoaded(true);
       return;
     }
 
     const latest = await apiGetLatestDailyPrices();
     if (latest?.prices) {
-      setPrices(latest.prices);
+      setPrices(sanitizePrices(latest.prices));
     } else {
       const defaults = {};
       priceItems.forEach(p => { if (p.defaultPrice) defaults[p.key] = p.defaultPrice; });
-      setPrices(defaults);
+      setPrices(sanitizePrices(defaults));
     }
     setLoaded(true);
   };
