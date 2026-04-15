@@ -29,9 +29,15 @@ export default function CumulativePerformanceChart({ snapshots = [] }) {
     const startDateStr = startDate.toISOString().slice(0, 10);
 
     // Filter data >= startDateStr
-    const validSnapshots = snapshots.filter(s => s.date >= startDateStr).sort((a,b) => a.date.localeCompare(b.date));
-    const validVnindex = (benchmarks.VNINDEX || []).filter(s => s.date >= startDateStr).sort((a,b) => a.date.localeCompare(b.date));
-    const validBtc = (benchmarks.BTC || []).filter(s => s.date >= startDateStr).sort((a,b) => a.date.localeCompare(b.date));
+    const validSnapshots = snapshots
+      .filter(s => s.date >= startDateStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const validVnindex = (benchmarks.VNINDEX || [])
+      .filter(s => s.date >= startDateStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const validBtc = (benchmarks.BTC || [])
+      .filter(s => s.date >= startDateStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // Get union of all dates
     const allDates = new Set([
@@ -43,54 +49,78 @@ export default function CumulativePerformanceChart({ snapshots = [] }) {
 
     if (sortedDates.length === 0) return [];
 
-    // Base values (the first available value in the range)
-    const basePtf = validSnapshots.length > 0 ? (validSnapshots[0].portfolioValue || 1) : 1;
-    const baseVn = validVnindex.length > 0 ? (validVnindex[0].close || 1) : 1;
+    // ── Portfolio: dùng % lời/lỗ = (Value - Cost) / Cost * 100 ──
+    // Điều này loại bỏ ảnh hưởng khi nạp/rút tiền (deposits don't inflate the chart).
+    // "Hiệu suất" = tỷ suất lợi nhuận thực sự trên vốn đã đầu tư.
+    //
+    // Để so sánh công bằng với VN-Index và BTC (vốn cũng là % từ điểm đầu kỳ),
+    // ta lấy PnL% của ngày đầu kỳ làm baseline và trừ đi, quy về 0%.
+    const baseSnapshot = validSnapshots.length > 0 ? validSnapshots[0] : null;
+    const basePnlPct = baseSnapshot
+      ? (baseSnapshot.portfolioCost > 0
+          ? ((baseSnapshot.portfolioValue - baseSnapshot.portfolioCost) / baseSnapshot.portfolioCost) * 100
+          : 0)
+      : 0;
+
+    // VN-Index và BTC: cumulative % từ điểm đầu kỳ
+    const baseVn  = validVnindex.length > 0 ? (validVnindex[0].close || 1) : 1;
     const baseBtc = validBtc.length > 0 ? (validBtc[0].close || 1) : 1;
 
     // Create maps for quick lookup
-    const mapPtf = Object.fromEntries(validSnapshots.map(s => [s.date, s.portfolioValue || 0]));
-    const mapVn = Object.fromEntries(validVnindex.map(s => [s.date, s.close || 0]));
+    const mapPtf = Object.fromEntries(
+      validSnapshots.map(s => [
+        s.date,
+        s.portfolioCost > 0
+          ? ((s.portfolioValue - s.portfolioCost) / s.portfolioCost) * 100
+          : 0
+      ])
+    );
+    const mapVn  = Object.fromEntries(validVnindex.map(s => [s.date, s.close || 0]));
     const mapBtc = Object.fromEntries(validBtc.map(s => [s.date, s.close || 0]));
 
     // Fill forward missing dates
-    let lastPtf = basePtf;
-    let lastVn = baseVn;
+    let lastPtfPct = basePnlPct;
+    let lastVn  = baseVn;
     let lastBtc = baseBtc;
 
     const dataPtf = [];
-    const dataVn = [];
+    const dataVn  = [];
     const dataBtc = [];
 
     sortedDates.forEach(date => {
-      lastPtf = mapPtf[date] ?? lastPtf;
-      lastVn = mapVn[date] ?? lastVn;
-      lastBtc = mapBtc[date] ?? lastBtc;
+      lastPtfPct = mapPtf[date] ?? lastPtfPct;
+      lastVn     = mapVn[date]  ?? lastVn;
+      lastBtc    = mapBtc[date] ?? lastBtc;
 
-      // Cumulative % = (Current/Base - 1) * 100
-      dataPtf.push({ 
-        x: date, 
-        y: ((lastPtf / basePtf) - 1) * 100,
-        rawStr: Math.round(lastPtf).toLocaleString('vi-VN') + ' đ'
+      // Danh mục: % lời/lỗ trên vốn, trừ baseline đầu kỳ → so sánh tương đối
+      dataPtf.push({
+        x: date,
+        y: parseFloat((lastPtfPct - basePnlPct).toFixed(2)),
+        rawStr: (lastPtfPct >= 0 ? '+' : '') + lastPtfPct.toFixed(2) + '% so với vốn'
       });
-      dataVn.push({ 
-        x: date, 
-        y: ((lastVn / baseVn) - 1) * 100,
+
+      // VN-Index: % thay đổi từ điểm đầu kỳ
+      dataVn.push({
+        x: date,
+        y: parseFloat((((lastVn / baseVn) - 1) * 100).toFixed(2)),
         rawStr: lastVn.toFixed(2) + ' pts'
       });
-      dataBtc.push({ 
-        x: date, 
-        y: ((lastBtc / baseBtc) - 1) * 100,
+
+      // BTC: % thay đổi từ điểm đầu kỳ (USD)
+      dataBtc.push({
+        x: date,
+        y: parseFloat((((lastBtc / baseBtc) - 1) * 100).toFixed(2)),
         rawStr: lastBtc.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
       });
     });
 
     return [
       { label: 'Danh mục', data: dataPtf, color: '#6366f1', fill: false },
-      { label: 'VN-Index', data: dataVn, color: '#f59e0b', fill: false },
+      { label: 'VN-Index', data: dataVn,  color: '#f59e0b', fill: false },
       { label: 'Bitcoin (USD)', data: dataBtc, color: '#10b981', fill: false }
     ];
   }, [snapshots, benchmarks, range]);
+
 
   return (
     <div className="glass-card section-card">

@@ -131,40 +131,64 @@ def daily_price_snapshot_job():
     price_results = price_service.fetch_all_portfolio_prices(sorted(all_tickers), today)
     logger.info(f"  Got {len(price_results)} price results")
 
-    # Update global market prices
+    # Update global market prices — only update if we got a valid (non-zero) price
+    # to avoid overwriting good prices with 0 from failed API calls.
     market_update = {}
     stablecoin_tickers = {"USDT", "USDC"}
     for ticker, result in price_results.items():
+        fetched_price = result.get("price", 0)
+
         if ticker in stablecoin_tickers:
+            vnd_rate = fetched_price  # price field = VND exchange rate for stablecoins
+            if not vnd_rate or vnd_rate <= 0:
+                logger.warning(f"  ⚠️ Skipping market update for {ticker}: invalid VND rate={vnd_rate}")
+                continue
             # Stablecoins: price=1 (in USD), exchangeRate=VND rate
             market_update[ticker] = {
                 "price": 1,
-                "exchangeRate": result.get("price", 1),
+                "exchangeRate": vnd_rate,
                 "date": today,
                 "source": result.get("source", "auto"),
             }
         elif ticker == "GOLD":
+            sell_price = result.get("sell", 0) or fetched_price
+            if not sell_price or sell_price <= 0:
+                logger.warning(f"  ⚠️ Skipping market update for GOLD: invalid price={sell_price}")
+                continue
             # Gold SJC: price in VND per lượng
             market_update[ticker] = {
-                "price": result.get("price", 0),
+                "price": sell_price,
                 "buy": result.get("buy", 0),
-                "sell": result.get("sell", 0),
+                "sell": sell_price,
                 "date": today,
                 "source": result.get("source", "vang.today"),
             }
         else:
+            if not fetched_price or fetched_price <= 0:
+                logger.warning(f"  ⚠️ Skipping market update for {ticker}: invalid price={fetched_price}")
+                continue
             market_update[ticker] = {
-                "price": result.get("price", 0),
+                "price": fetched_price,
                 "date": today,
                 "source": result.get("source", "auto"),
             }
 
     if market_update:
         fs.batch_update_market_prices(market_update)
-        logger.info(f"  ✅ Updated {len(market_update)} market prices")
+        logger.info(f"  ✅ Updated {len(market_update)} market prices ({len(price_results) - len(market_update)} skipped due to invalid prices)")
+    else:
+        logger.warning("  ⚠️ No valid prices to update in market — all API fetches may have failed!")
 
-    # Get updated market prices for portfolio calculations
-    market_prices = fs.get_market_prices()
+    # Get Firestore market prices (may still have stale/corrupt values for failed tickers)
+    firestore_market_prices = fs.get_market_prices()
+
+    # Build effective_market_prices = Firestore data, OVERLAID with fresh valid API results.
+    # This ensures calculate_portfolio always uses the freshest correct price available,
+    # even if Firestore was previously corrupted with 0s from past failed runs.
+    effective_market_prices = dict(firestore_market_prices)
+    for ticker, data in market_update.items():
+        effective_market_prices[ticker] = data
+    logger.info(f"  📊 Effective market prices built: {len(effective_market_prices)} tickers")
 
     # For each user: save daily prices + snapshot
     for user_info in users:
@@ -176,35 +200,74 @@ def daily_price_snapshot_job():
             if not tickers:
                 continue
 
-            # Build daily prices dict for this user
-            daily_prices_dict = {}
+            # Fetch yesterday's daily prices as the primary fallback source.
+            # "'Giá tốt'" = giá ngày hôm trước — not marketPrices which may be corrupt with 0s.
+            prev_daily = fs.get_latest_daily_prices(uid, utype)
+            prev_prices_map = {}
+            if prev_daily and isinstance(prev_daily.get("prices"), list):
+                for entry in prev_daily["prices"]:
+                    t = entry.get("ticker") or entry.get("symbol", "")
+                    p = entry.get("price", 0)
+                    if t and p and p > 0:
+                        prev_prices_map[t] = p
+                logger.info(f"  📅 User {uid}: loaded {len(prev_prices_map)} prices from prev day ({prev_daily.get('date', '?')})")
+            else:
+                logger.info(f"  📅 User {uid}: no previous daily prices found, fallback chain: marketPrices (Firestore) only")
+
+            # Build daily prices list for this user.
+            # Priority: (1) fresh API price  →  (2) yesterday’s dailyPrice  →  (3) Firestore marketPrices
+            daily_prices_list = []
             for ticker in tickers:
-                if ticker in price_results:
-                    daily_prices_dict[ticker] = price_results[ticker].get("price", 0)
+                raw_price = price_results.get(ticker, {}).get("price", 0)
+
+                if raw_price and raw_price > 0:
+                    # ✅ Fresh API price available
+                    daily_prices_list.append({"ticker": ticker, "price": raw_price})
                 else:
-                    # Fallback to latest known market price if API fetch failed
-                    last_known = market_prices.get(ticker, {})
-                    fallback_price = last_known.get("exchangeRate") or last_known.get("price", 0)
-                    daily_prices_dict[ticker] = fallback_price
-                    logger.warning(f"  ⚠️ User {uid}: API fetch failed for {ticker}, using fallback: {fallback_price}")
+                    # ❌ API failed or returned 0 — use yesterday's price as first fallback
+                    fallback_price = prev_prices_map.get(ticker, 0)
+
+                    if fallback_price and fallback_price > 0:
+                        prev_date = prev_daily.get("date", "?") if prev_daily else "?"
+                        fallback_source = f"prev_daily ({prev_date})"
+                    else:
+                        # Last resort: Firestore marketPrices (may be stale but still > 0)
+                        mkt = firestore_market_prices.get(ticker, {})
+                        fallback_price = mkt.get("exchangeRate") or mkt.get("price", 0)
+                        fallback_source = "marketPrices (Firestore)" if fallback_price else "none"
+
+                    if fallback_price and fallback_price > 0:
+                        daily_prices_list.append({"ticker": ticker, "price": fallback_price})
+                        logger.warning(
+                            f"  ⚠️ User {uid}: API failed for {ticker} "
+                            f"(got {raw_price}), fallback → {fallback_source}: {fallback_price}"
+                        )
+                    else:
+                        logger.error(
+                            f"  ❌ User {uid}: No price available for {ticker} "
+                            f"(API=0, yesterday=0, Firestore=0) — skipping ticker in daily prices"
+                        )
 
             # Save daily prices
-            if daily_prices_dict:
-                fs.save_daily_prices(uid, utype, today, daily_prices_dict)
-                logger.info(f"  ✅ User {uid}: saved {len(daily_prices_dict)} daily prices")
+            if daily_prices_list:
+                fs.save_daily_prices(uid, utype, today, daily_prices_list)
+                logger.info(f"  ✅ User {uid}: saved {len(daily_prices_list)} daily prices")
 
-            # Calculate portfolio and generate snapshot
+            # Calculate portfolio and snapshot using effective_market_prices.
+            # effective_market_prices = Firestore + fresh valid API data, so even if Firestore
+            # had corrupt 0s from past failures, this snapshot uses correct prices.
             transactions = fs.get_transactions(uid, utype)
             external_assets = fs.get_external_assets(uid, utype)
             liabilities = fs.get_liabilities(uid, utype)
             funds = fs.get_funds(uid, utype)
 
             holdings = ps.calculate_holdings(transactions)
-            portfolio = ps.calculate_portfolio(holdings, market_prices)
+            portfolio = ps.calculate_portfolio(holdings, effective_market_prices)
             snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, funds)
 
             fs.save_snapshot(uid, utype, today, snapshot)
             logger.info(f"  ✅ User {uid}: snapshot saved (netWorth={snapshot.get('netWorth', 0):,.0f})")
+
 
         except Exception as e:
             logger.error(f"  ❌ Error processing user {uid}: {e}", exc_info=True)
