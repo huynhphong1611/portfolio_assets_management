@@ -204,25 +204,33 @@ def daily_price_snapshot_job():
             # "'Giá tốt'" = giá ngày hôm trước — not marketPrices which may be corrupt with 0s.
             prev_daily = fs.get_latest_daily_prices(uid, utype)
             prev_prices_map = {}
-            if prev_daily and isinstance(prev_daily.get("prices"), list):
-                for entry in prev_daily["prices"]:
-                    t = entry.get("ticker") or entry.get("symbol", "")
-                    p = entry.get("price", 0)
-                    if t and p and p > 0:
-                        prev_prices_map[t] = p
+            if prev_daily and "prices" in prev_daily:
+                p_data = prev_daily["prices"]
+                if isinstance(p_data, dict):
+                    # Frontend saves daily prices directly as a dictionary: { "USDT": 26500, "FUEVND": 20000 }
+                    for t, p in p_data.items():
+                        if t and p and p > 0:
+                            prev_prices_map[t] = p
+                elif isinstance(p_data, list):
+                    # Fallback for older format if it was saved as a list
+                    for entry in p_data:
+                        t = entry.get("ticker") or entry.get("symbol", "")
+                        p = entry.get("price", 0)
+                        if t and p and p > 0:
+                            prev_prices_map[t] = p
                 logger.info(f"  📅 User {uid}: loaded {len(prev_prices_map)} prices from prev day ({prev_daily.get('date', '?')})")
             else:
                 logger.info(f"  📅 User {uid}: no previous daily prices found, fallback chain: marketPrices (Firestore) only")
 
-            # Build daily prices list for this user.
+            # Build daily prices dict for this user (Frontend expects a DICT, not a list!).
             # Priority: (1) fresh API price  →  (2) yesterday’s dailyPrice  →  (3) Firestore marketPrices
-            daily_prices_list = []
+            daily_prices_dict = {}
             for ticker in tickers:
                 raw_price = price_results.get(ticker, {}).get("price", 0)
 
                 if raw_price and raw_price > 0:
                     # ✅ Fresh API price available
-                    daily_prices_list.append({"ticker": ticker, "price": raw_price})
+                    daily_prices_dict[ticker] = raw_price
                 else:
                     # ❌ API failed or returned 0 — use yesterday's price as first fallback
                     fallback_price = prev_prices_map.get(ticker, 0)
@@ -237,7 +245,7 @@ def daily_price_snapshot_job():
                         fallback_source = "marketPrices (Firestore)" if fallback_price else "none"
 
                     if fallback_price and fallback_price > 0:
-                        daily_prices_list.append({"ticker": ticker, "price": fallback_price})
+                        daily_prices_dict[ticker] = fallback_price
                         logger.warning(
                             f"  ⚠️ User {uid}: API failed for {ticker} "
                             f"(got {raw_price}), fallback → {fallback_source}: {fallback_price}"
@@ -248,20 +256,18 @@ def daily_price_snapshot_job():
                             f"(API=0, yesterday=0, Firestore=0) — skipping ticker in daily prices"
                         )
 
-            # Save daily prices
-            if daily_prices_list:
-                fs.save_daily_prices(uid, utype, today, daily_prices_list)
-                logger.info(f"  ✅ User {uid}: saved {len(daily_prices_list)} daily prices")
+            # Save daily prices in DICT format (compatible with UI)
+            if daily_prices_dict:
+                fs.save_daily_prices(uid, utype, today, daily_prices_dict)
+                logger.info(f"  ✅ User {uid}: saved {len(daily_prices_dict)} daily prices")
 
             # Calculate portfolio and snapshot.
             # IMPORTANT: effective_market_prices from global scope might STILL have 0s 
             # if the API failed today AND the Firestore already had 0s from yesterday.
-            # We MUST overlay the safely recovered per-user daily_prices_list onto it
+            # We MUST overlay the safely recovered per-user daily_prices_dict onto it
             # so calculate_portfolio absolutely never receives a 0.
             user_effective_prices = dict(effective_market_prices)
-            for dp in daily_prices_list:
-                t = dp["ticker"]
-                p = dp["price"]
+            for t, p in daily_prices_dict.items():
                 if t in {"USDT", "USDC"}:
                     user_effective_prices[t] = {"price": 1, "exchangeRate": p}
                 else:
