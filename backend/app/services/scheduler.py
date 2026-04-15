@@ -253,16 +253,27 @@ def daily_price_snapshot_job():
                 fs.save_daily_prices(uid, utype, today, daily_prices_list)
                 logger.info(f"  ✅ User {uid}: saved {len(daily_prices_list)} daily prices")
 
-            # Calculate portfolio and snapshot using effective_market_prices.
-            # effective_market_prices = Firestore + fresh valid API data, so even if Firestore
-            # had corrupt 0s from past failures, this snapshot uses correct prices.
+            # Calculate portfolio and snapshot.
+            # IMPORTANT: effective_market_prices from global scope might STILL have 0s 
+            # if the API failed today AND the Firestore already had 0s from yesterday.
+            # We MUST overlay the safely recovered per-user daily_prices_list onto it
+            # so calculate_portfolio absolutely never receives a 0.
+            user_effective_prices = dict(effective_market_prices)
+            for dp in daily_prices_list:
+                t = dp["ticker"]
+                p = dp["price"]
+                if t in {"USDT", "USDC"}:
+                    user_effective_prices[t] = {"price": 1, "exchangeRate": p}
+                else:
+                    user_effective_prices[t] = {"price": p}
+
             transactions = fs.get_transactions(uid, utype)
             external_assets = fs.get_external_assets(uid, utype)
             liabilities = fs.get_liabilities(uid, utype)
             funds = fs.get_funds(uid, utype)
 
             holdings = ps.calculate_holdings(transactions)
-            portfolio = ps.calculate_portfolio(holdings, effective_market_prices)
+            portfolio = ps.calculate_portfolio(holdings, user_effective_prices)
             snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, funds)
 
             fs.save_snapshot(uid, utype, today, snapshot)
