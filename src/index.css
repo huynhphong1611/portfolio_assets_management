@@ -2953,3 +2953,492 @@ body {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+
+/* ============================================================
+   40. USD HINT (Crypto price in USD, derived from VNĐ ÷ USDT rate)
+   ============================================================ */
+
+.usd-hint {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+
+/* ============================================================
+   41. ADMIN PORTAL — Login Screen
+   ============================================================ */
+
+.admin-login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #1e293b 100%);
+}
+
+.admin-login-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 2.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.admin-login-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--color-rose-500), #c026d3);
+  border-radius: var(--radius-lg);
+  color: white;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 8px 24px rgba(244, 63, 94, 0.4);
+}
+
+.admin-login-header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.admin-login-header h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.02em;
+}
+
+.admin-login-header p {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+}
+
+.admin-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-login-form .form-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.admin-login-form .form-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.admin-login-form .form-input:focus {
+  border-color: var(--color-rose-400);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-login-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--color-rose-400);
+  font-size: 0.85rem;
+}
+
+.admin-login-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+
+/* ============================================================
+   42. ADMIN PORTAL — Layout & Cards
+   ============================================================ */
+
+.admin-section {
+  padding-bottom: 2rem;
+}
+
+.admin-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-section-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.admin-section-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.admin-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--glass-shadow);
+}
+
+.admin-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.admin-card-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.admin-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  padding: 2rem;
+  justify-content: center;
+}
+
+
+/* ============================================================
+   43. ADMIN PORTAL — Toolbar & Status
+   ============================================================ */
+
+.admin-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-rate-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-emerald-600);
+  background: var(--color-emerald-50);
+  border: 1px solid var(--color-emerald-100);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+}
+
+.admin-status-msg {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.admin-status-success {
+  background: var(--color-emerald-50);
+  border: 1px solid var(--color-emerald-100);
+  color: var(--color-emerald-700);
+}
+
+.admin-status-error {
+  background: var(--color-rose-50);
+  border: 1px solid var(--color-rose-100);
+  color: var(--color-rose-700);
+}
+
+
+/* ============================================================
+   44. ADMIN PORTAL — Price Board
+   ============================================================ */
+
+.admin-price-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.admin-price-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.admin-price-item {
+  background: var(--color-slate-50);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  min-width: 0; /* prevent grid blowout */
+  overflow: hidden;
+}
+
+.admin-price-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-price-ticker {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.admin-price-item-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.admin-price-input {
+  flex: 1;
+  min-width: 0;
+  width: 0; /* let flex control width, prevents overflow */
+  font-size: 0.9rem;
+}
+
+.admin-price-unit {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.admin-price-usd-hint {
+  font-size: 0.72rem;
+  color: var(--color-amber-500);
+  font-weight: 600;
+  margin-top: 4px;
+  display: block;
+}
+
+.admin-price-vnd-hint {
+  font-size: 0.72rem;
+  color: var(--color-blue-600);
+  font-weight: 700;
+  margin-top: 3px;
+  display: block;
+  letter-spacing: 0.01em;
+}
+
+.admin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 3rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+
+/* ============================================================
+   45. ADMIN PORTAL — Badge
+   ============================================================ */
+
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.admin-badge--blue {
+  background: var(--color-blue-50);
+  color: var(--color-blue-700);
+}
+
+.admin-badge--orange {
+  background: var(--color-amber-50);
+  color: #b45309;
+}
+
+.btn-xs {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  height: auto;
+}
+
+.btn-success {
+  color: var(--color-emerald-600);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.btn-danger {
+  color: var(--color-rose-500);
+  border-color: rgba(244, 63, 94, 0.3);
+}
+
+
+/* ============================================================
+   46. ADMIN PORTAL — Ticker Config
+   ============================================================ */
+
+.admin-ticker-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .admin-ticker-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.admin-ticker-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-ticker-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-ticker-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--color-slate-100);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-ticker-remove {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+  transition: color var(--transition-fast);
+}
+
+.admin-ticker-remove:hover {
+  color: var(--color-rose-500);
+}
+
+.admin-ticker-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+
+/* ============================================================
+   47. ADMIN PORTAL — Settings
+   ============================================================ */
+
+.admin-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .admin-settings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.admin-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 0;
+}
+
+.admin-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-toggle-slider {
+  width: 48px;
+  height: 26px;
+  background: var(--color-slate-300);
+  border-radius: var(--radius-full);
+  position: relative;
+  transition: background var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.admin-toggle-slider::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  transition: transform var(--transition-fast);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.admin-toggle input:checked ~ .admin-toggle-slider {
+  background: var(--color-emerald-500);
+}
+
+.admin-toggle input:checked ~ .admin-toggle-slider::after {
+  transform: translateX(22px);
+}
+
+.admin-danger-card {
+  border-color: rgba(244, 63, 94, 0.2);
+  background: rgba(244, 63, 94, 0.02);
+}
+
+.admin-danger-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}

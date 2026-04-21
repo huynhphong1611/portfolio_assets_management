@@ -8,7 +8,7 @@ import {
 import { useAuth } from './contexts/AuthContext.jsx';
 import Login from './components/Auth/Login.jsx';
 
-import { formatVND, formatNum, formatPercent, formatQty } from './utils/formatters.js';
+import { formatVND, formatNum, formatPercent, formatQty, formatUSD, vndToUSD } from './utils/formatters.js';
 import {
   calculateHoldings, calculatePortfolio, calculateNetWorth,
   calculateRebalance, calculateTotalPnL, generateSnapshot
@@ -29,6 +29,7 @@ import NetWorthExternalManager from './components/NetWorthExternalManager.jsx';
 import LiabilitiesManager from './components/LiabilitiesManager.jsx';
 import FundManager from './components/FundManager.jsx';
 import PriceManager from './components/PriceManager.jsx';
+import SystemPricesBoard from './components/SystemPricesBoard.jsx';
 import LineChart from './components/charts/LineChart.jsx';
 import CumulativePerformanceChart from './components/CumulativePerformanceChart.jsx';
 
@@ -203,6 +204,30 @@ export default function App() {
     } catch (err) { alert('Lỗi: ' + err.message); }
   };
 
+  const handleLiveRefreshAndSnapshot = async () => {
+    try {
+      // 1. Fetch latest raw data from DB to ensure we compute with fresh data
+      const [txs, extAssets, debts, fundsData, mktPrices] = await Promise.all([
+        apiGetTransactions().catch(() => []),
+        apiGetExternalAssets().catch(() => []),
+        apiGetLiabilities().catch(() => []),
+        apiGetFunds().catch(() => []),
+        apiGetMarketPrices().catch(() => ({}))
+      ]);
+      // 2. Compute inline
+      const h = calculateHoldings(txs || []);
+      const p = calculatePortfolio(h, mktPrices || {});
+      const snap = generateSnapshot(p, extAssets || [], debts || [], fundsData || []);
+      // 3. Save snapshot for today
+      const today = new Date().toISOString().slice(0, 10);
+      await apiSaveSnapshot({ date: today, ...snap });
+      // 4. Update UI state
+      refreshData();
+    } catch (err) {
+      console.error('Lỗi khi snapshot sau refresh:', err);
+    }
+  };
+
   const handleEditTransaction = (tx) => {
     setEditingTransaction(tx);
     setIsModalOpen(true);
@@ -222,9 +247,15 @@ export default function App() {
     { id: 'portfolio', icon: <Briefcase size={20} />, label: "Danh mục Đầu tư" },
     { id: 'funds', icon: <Landmark size={20} />, label: "Quỹ Đầu tư" },
     { id: 'rebalance', icon: <Scale size={20} />, label: "Tái cơ cấu" },
-    { id: 'prices', icon: <BarChart3 size={20} />, label: "Bảng giá" },
     { id: 'transactions', icon: <ArrowRightLeft size={20} />, label: "Nhật ký GD" },
+    { id: 'system', icon: <BarChart3 size={20} />, label: "Dữ liệu Thị trường" },
   ];
+
+  // USDT rate for crypto USD hints
+  const usdtVndRate = useMemo(() => {
+    const usdt = marketPrices['USDT'] || marketPrices['USDC'];
+    return usdt?.exchangeRate || usdt?.price || 0;
+  }, [marketPrices]);
 
   // ============================================================
   // LOADING & AUTH
@@ -509,7 +540,12 @@ export default function App() {
                         {portfolio
                           .filter(p => p.ticker !== 'VNĐ')
                           .filter(p => !searchTerm || p.ticker.toLowerCase().includes(searchTerm.toLowerCase()))
-                          .map((item, idx) => (
+                          .map((item, idx) => {
+                            const isCrypto = item.assetClass === 'Tài sản mã hóa';
+                            const usdHint = isCrypto && usdtVndRate > 0
+                              ? formatUSD(vndToUSD(item.actualValue, usdtVndRate))
+                              : null;
+                            return (
                             <tr key={idx} className="table-row-hover">
                               <td>
                                 <div className="td-ticker">{item.ticker}</div>
@@ -517,14 +553,18 @@ export default function App() {
                               </td>
                               <td className="text-right td-mono">{formatQty(item.qty, item.assetClass)}</td>
                               <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
-                              <td className="text-right td-mono td-bold">{formatVND(item.actualValue)}</td>
+                              <td className="text-right td-mono td-bold">
+                                {formatVND(item.actualValue)}
+                                {usdHint && <div className="usd-hint">≈ {usdHint}</div>}
+                              </td>
                               <td className="text-right">
                                 <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
                                   {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)} ({formatPercent(item.pnlPercent)})
                                 </span>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>
@@ -588,12 +628,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ===== TAB 5: PRICES ===== */}
-            {activeTab === 'prices' && (
-              <PriceManager dailyPrices={dailyPrices} transactions={transactions} apiEnabled={true} onUpdate={refreshData} />
-            )}
-
-            {/* ===== TAB 6: TRANSACTIONS ===== */}
+            {/* ===== TAB 5: TRANSACTIONS ===== */}
             {activeTab === 'transactions' && (
               <div className="animate-fade-in">
                 <div className="section-header">
@@ -607,6 +642,11 @@ export default function App() {
                 </div>
                 <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} funds={funds} />
               </div>
+            )}
+
+            {/* ===== TAB 6: SYSTEM PRICES ===== */}
+            {activeTab === 'system' && (
+              <SystemPricesBoard onRefreshData={handleLiveRefreshAndSnapshot} />
             )}
 
           </div>

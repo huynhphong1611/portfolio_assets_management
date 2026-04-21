@@ -125,26 +125,10 @@ export function calculatePortfolio(holdings, marketPrices = {}) {
     if (h.ticker === 'VNĐ') {
       actualValue = h.qty;
       marketPrice = 1;
-    } else if (h.ticker === 'USDT') {
-      // USDT itself: qty * exchangeRate
-      actualValue = h.qty * usdtRate;
-      marketPrice = usdtRate;
-    } else if (h.ticker === 'USDC') {
-      // USDC itself: qty * exchangeRate
-      actualValue = h.qty * usdcRate;
-      marketPrice = usdcRate;
-    } else if (h.currency === 'USDT' || h.currency === 'USDC' || h.assetClass === 'Tài sản mã hóa' || CRYPTO_GOLD_TICKERS.has(h.ticker)) {
-      // Crypto/USDT-priced assets: qty * price_in_USDT * USDT_rate
-      // Also includes PAXG, XAUT gold tokens that are priced in USDT
-      if (market.price) {
-        actualValue = h.qty * market.price * usdtRate;
-      } else {
-        actualValue = h.qty * h.avgCost; // Fallback: avgCost is already in VND
-        marketPrice = h.avgCost / usdtRate;
-      }
+    } else if (h.ticker === 'USDT' || h.ticker === 'USDC') {
+      actualValue = h.qty * marketPrice; // For stablecoins, marketPrice IS the VND rate
     } else {
-      // VND-priced assets: qty * price_in_VND
-      marketPrice = market.price || h.avgCost;
+      marketPrice = market.price || h.avgCost; // market.price is ALREADY in VND
       actualValue = h.qty * marketPrice;
     }
 

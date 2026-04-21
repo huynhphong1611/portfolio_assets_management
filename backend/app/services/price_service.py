@@ -190,7 +190,7 @@ def get_fund_nav(symbol: str, target_date: str = None) -> Optional[dict]:
     return None
 
 
-def get_stock_price(symbol: str, source: str = "VCI",
+def get_stock_price(symbol: str, source: str = "kbs",
                     target_date: str = None) -> Optional[dict]:
     """Get latest price for a stock/ETF traded on exchange."""
     from vnstock import Vnstock
@@ -376,48 +376,57 @@ def is_crypto_ticker(symbol: str) -> bool:
     return False
 
 
-def get_price(symbol: str, source: str = "VCI",
+def get_price(symbol: str, asset_type_hint: str = None, source: str = "kbs",
               target_date: str = None) -> Optional[dict]:
     """
     Unified price fetcher — auto-detects asset type (fund/crypto/stock/stablecoin/gold).
+    If asset_type_hint is provided, strictly follow it.
     For unknown tickers, tries CoinGecko auto-detect before falling back to stock.
     """
     symbol = symbol.strip().upper()
     logger.info(f"📈 Fetching price for {symbol} (date: {target_date or 'latest'})")
 
     # Stablecoins (USDT, USDC) — get VND exchange rate
-    if symbol in STABLECOIN_TICKERS:
+    if symbol in STABLECOIN_TICKERS or asset_type_hint == "stablecoin":
         logger.info(f"  💱 {symbol} → CoinGecko VND rate")
         return get_stablecoin_vnd_rate(symbol)
 
     # Gold SJC
-    if symbol == GOLD_TICKER:
+    if symbol == GOLD_TICKER or asset_type_hint == "gold":
         logger.info(f"  🥇 {symbol} → vang.today API")
         return get_gold_sjc_price()
 
-    if symbol in FUND_SYMBOLS:
+    # If hint is explicitly fund
+    if asset_type_hint == "fund" or symbol in FUND_SYMBOLS:
         logger.info(f"  🏦 {symbol} → Fund module")
         return get_fund_nav(symbol, target_date)
-    elif symbol in CRYPTO_MAPPING:
-        logger.info(f"  💸 {symbol} → CoinGecko API (known)")
+        
+    # If hint is explicitly crypto
+    if asset_type_hint == "crypto" or symbol in CRYPTO_MAPPING:
+        logger.info(f"  💸 {symbol} → CoinGecko API (known crypto)")
         return get_crypto_price_coingecko(symbol, target_date)
-    else:
-        # Try stock first, fall back to CoinGecko auto-detect
-        logger.info(f"  📊 {symbol} → trying Stock module first")
-        result = get_stock_price(symbol, source, target_date)
-        if result:
-            return result
+        
+    # If hint is explicitly stock
+    if asset_type_hint == "stock":
+        logger.info(f"  📊 {symbol} → Stock module (explicit hint)")
+        return get_stock_price(symbol, source, target_date)
 
-        # If stock failed, try CoinGecko auto-detect
-        logger.info(f"  🔍 {symbol} → trying CoinGecko auto-detect")
-        coin_id = resolve_coingecko_id(symbol)
-        if coin_id:
-            return get_crypto_price_coingecko(symbol, target_date)
+    # NO HINT: auto-detect fallback
+    logger.info(f"  📊 {symbol} → trying Stock module auto-detect first")
+    result = get_stock_price(symbol, source, target_date)
+    if result:
+        return result
 
-        return None
+    # If stock failed, try CoinGecko auto-detect
+    logger.info(f"  🔍 {symbol} → trying CoinGecko auto-detect")
+    coin_id = resolve_coingecko_id(symbol)
+    if coin_id:
+        return get_crypto_price_coingecko(symbol, target_date)
+
+    return None
 
 
-def fetch_all_portfolio_prices(tickers: list, target_date: str = None) -> dict:
+def fetch_all_portfolio_prices(tickers: list, target_date: str = None, ticker_type_map: dict = None) -> dict:
     """
     Batch fetch prices for a list of tickers.
     Returns {ticker: price_result_dict}.
@@ -427,6 +436,7 @@ def fetch_all_portfolio_prices(tickers: list, target_date: str = None) -> dict:
     whether they appear in the tickers list, so market prices stay current.
     """
     results = {}
+    ticker_type_map = ticker_type_map or {}
 
     # Always fetch stablecoin rates and gold price
     always_fetch = set(STABLECOIN_TICKERS) | {GOLD_TICKER}
@@ -435,8 +445,10 @@ def fetch_all_portfolio_prices(tickers: list, target_date: str = None) -> dict:
     for ticker in all_tickers:
         if ticker in ("VNĐ", "USDT_RATE"):
             continue
+            
+        asset_hint = ticker_type_map.get(ticker)
         try:
-            result = get_price(ticker, "VCI", target_date)
+            result = get_price(ticker, asset_type_hint=asset_hint, source="kbs", target_date=target_date)
             if result:
                 results[ticker] = result
             else:

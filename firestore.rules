@@ -21,5 +21,13 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+
+    // ─── SYSTEM COLLECTION (Admin-controlled via backend Admin SDK) ───
+    // Public read for prices & config (users need to read market prices)
+    // Write is ALWAYS false — only backend Admin SDK can write (bypasses rules)
+    match /system/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

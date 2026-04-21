@@ -94,198 +94,154 @@ def _extract_tickers(transactions: list) -> list[str]:
 def daily_price_snapshot_job():
     """
     Main scheduled job — runs daily at 9:00 AM.
-    For each user: fetch prices, save daily prices, update market, create snapshot.
+    Fetches prices for admin-configured tickers, saves to system/prices/daily,
+    updates marketPrices, then generates per-user snapshots from system prices.
     """
     today = datetime.now().strftime("%Y-%m-%d")
     logger.info(f"🕘 === DAILY SCHEDULER START === {today}")
 
-    users = _get_all_user_ids()
-    if not users:
-        logger.warning("No users found, skipping scheduler run.")
-        return
-
-    logger.info(f"Found {len(users)} users to process")
-
-    # Collect all unique tickers across all users
-    all_tickers = set()
-    user_tickers_map = {}
-
-    for user_info in users:
-        uid = user_info["user_id"]
-        utype = user_info["user_type"]
-        try:
-            transactions = fs.get_transactions(uid, utype)
-            tickers = _extract_tickers(transactions)
-            user_tickers_map[(uid, utype)] = tickers
-            all_tickers.update(tickers)
-            logger.info(f"  User {uid} ({utype}): {len(tickers)} tickers: {tickers}")
-        except Exception as e:
-            logger.error(f"  Error fetching transactions for {uid}: {e}")
+    # 1. Load admin-configured tickers
+    ticker_config = fs.get_supported_tickers()
+    all_tickers = list(set(
+        ticker_config.get("stocks", []) +
+        ticker_config.get("crypto", []) +
+        ticker_config.get("funds", [])
+    ))
 
     if not all_tickers:
-        logger.warning("No tickers found across all users, skipping.")
+        # Fallback: collect from all users if admin has not configured yet
+        logger.warning("No admin tickers configured, falling back to user transaction tickers")
+        users = _get_all_user_ids()
+        fallback_tickers = set()
+        for user_info in users:
+            try:
+                transactions = fs.get_transactions(user_info["user_id"], user_info["user_type"])
+                fallback_tickers.update(_extract_tickers(transactions))
+            except Exception:
+                pass
+        all_tickers = sorted(fallback_tickers)
+
+    if not all_tickers:
+        logger.warning("No tickers found at all, skipping.")
         return
 
-    # Batch fetch all prices once
     logger.info(f"📈 Fetching prices for {len(all_tickers)} tickers: {sorted(all_tickers)}")
-    price_results = price_service.fetch_all_portfolio_prices(sorted(all_tickers), today)
+    
+    ticker_type_map = {}
+    for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
+    for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
+    for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
+
+    # 2. Batch fetch all prices
+    price_results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=today, ticker_type_map=ticker_type_map)
     logger.info(f"  Got {len(price_results)} price results")
 
-    # Update global market prices — only update if we got a valid (non-zero) price
-    # to avoid overwriting good prices with 0 from failed API calls.
-    market_update = {}
+    # 3. Get USDT VND rate for crypto conversion
+    usdt_result = price_results.get("USDT", {})
+    usdt_vnd = usdt_result.get("price", 0) or usdt_result.get("exchangeRate", 0)
+    if not usdt_vnd:
+        # Try fetching separately
+        try:
+            r = price_service.get_stablecoin_vnd_rate("USDT")
+            usdt_vnd = r.get("price", 0) if r else 0
+        except Exception:
+            pass
+    if not usdt_vnd:
+        usdt_vnd = fs.get_global_settings().get("usdt_vnd_default", 26500)
+    logger.info(f"  USDT/VNĐ rate: {usdt_vnd:,.0f}")
+
+    # 4. Determine which tickers are crypto (for USD → VND conversion)
+    crypto_tickers = set(ticker_config.get("crypto", []))
     stablecoin_tickers = {"USDT", "USDC"}
+
+    # 5. Build system prices dict (ALL prices in VND)
+    prices_vnd = {}
+    market_update = {}
+
     for ticker, result in price_results.items():
-        fetched_price = result.get("price", 0)
+        raw_price = result.get("price", 0)
+        if not raw_price or raw_price <= 0:
+            continue
 
         if ticker in stablecoin_tickers:
-            vnd_rate = fetched_price  # price field = VND exchange rate for stablecoins
-            if not vnd_rate or vnd_rate <= 0:
-                logger.warning(f"  ⚠️ Skipping market update for {ticker}: invalid VND rate={vnd_rate}")
-                continue
-            # Stablecoins: price=1 (in USD), exchangeRate=VND rate
+            # Stablecoin: raw_price IS the VND rate
+            prices_vnd[ticker] = raw_price
             market_update[ticker] = {
-                "price": 1,
-                "exchangeRate": vnd_rate,
+                "price": raw_price,
+                "exchangeRate": raw_price,
                 "date": today,
                 "source": result.get("source", "auto"),
             }
         elif ticker == "GOLD":
-            sell_price = result.get("sell", 0) or fetched_price
-            if not sell_price or sell_price <= 0:
-                logger.warning(f"  ⚠️ Skipping market update for GOLD: invalid price={sell_price}")
-                continue
-            # Gold SJC: price in VND per lượng
-            market_update[ticker] = {
-                "price": sell_price,
-                "buy": result.get("buy", 0),
-                "sell": sell_price,
-                "date": today,
-                "source": result.get("source", "vang.today"),
-            }
+            sell_price = result.get("sell", 0) or raw_price
+            if sell_price > 0:
+                prices_vnd[ticker] = sell_price
+                market_update[ticker] = {
+                    "price": sell_price,
+                    "buy": result.get("buy", 0),
+                    "sell": sell_price,
+                    "date": today,
+                    "source": result.get("source", "vang.today"),
+                }
+        elif ticker in crypto_tickers:
+            # Crypto from CoinGecko comes in USD — convert to VND
+            price_usd = raw_price
+            price_vnd = round(price_usd * usdt_vnd) if usdt_vnd else 0
+            if price_vnd > 0:
+                prices_vnd[ticker] = price_vnd
+                market_update[ticker] = {
+                    "price": price_vnd,
+                    "price_usd": price_usd,
+                    "usdt_vnd_rate": usdt_vnd,
+                    "date": today,
+                    "source": result.get("source", "CoinGecko"),
+                }
         else:
-            if not fetched_price or fetched_price <= 0:
-                logger.warning(f"  ⚠️ Skipping market update for {ticker}: invalid price={fetched_price}")
-                continue
+            # Stocks and funds already in VND
+            prices_vnd[ticker] = raw_price
             market_update[ticker] = {
-                "price": fetched_price,
+                "price": raw_price,
                 "date": today,
                 "source": result.get("source", "auto"),
             }
 
+    # 6. Save to system daily prices collection (replaces user-scoped)
+    if prices_vnd:
+        fs.save_system_daily_prices(today, prices_vnd, usdt_vnd)
+        logger.info(f"  ✅ Saved {len(prices_vnd)} prices to system/prices/daily/{today}")
+    else:
+        logger.warning("  ⚠️ No valid prices to save in system daily prices")
+
+    # 7. Update global marketPrices
     if market_update:
         fs.batch_update_market_prices(market_update)
-        logger.info(f"  ✅ Updated {len(market_update)} market prices ({len(price_results) - len(market_update)} skipped due to invalid prices)")
-    else:
-        logger.warning("  ⚠️ No valid prices to update in market — all API fetches may have failed!")
+        logger.info(f"  ✅ Updated {len(market_update)} market prices")
 
-    # Get Firestore market prices (may still have stale/corrupt values for failed tickers)
+    # 8. Get effective market prices for portfolio calculation
     firestore_market_prices = fs.get_market_prices()
-
-    # Build effective_market_prices = Firestore data, OVERLAID with fresh valid API results.
-    # This ensures calculate_portfolio always uses the freshest correct price available,
-    # even if Firestore was previously corrupted with 0s from past failed runs.
     effective_market_prices = dict(firestore_market_prices)
-    for ticker, data in market_update.items():
-        effective_market_prices[ticker] = data
-    logger.info(f"  📊 Effective market prices built: {len(effective_market_prices)} tickers")
+    effective_market_prices.update(market_update)
 
-    # For each user: save daily prices + snapshot
+    # 9. For each user: calculate portfolio snapshot using system prices
+    users = _get_all_user_ids()
     for user_info in users:
         uid = user_info["user_id"]
         utype = user_info["user_type"]
-
         try:
-            tickers = user_tickers_map.get((uid, utype), [])
-            if not tickers:
+            transactions = fs.get_transactions(uid, utype)
+            if not transactions:
                 continue
 
-            # Fetch yesterday's daily prices as the primary fallback source.
-            # "'Giá tốt'" = giá ngày hôm trước — not marketPrices which may be corrupt with 0s.
-            prev_daily = fs.get_latest_daily_prices(uid, utype)
-            prev_prices_map = {}
-            if prev_daily and "prices" in prev_daily:
-                p_data = prev_daily["prices"]
-                if isinstance(p_data, dict):
-                    # Frontend saves daily prices directly as a dictionary: { "USDT": 26500, "FUEVND": 20000 }
-                    for t, p in p_data.items():
-                        if t and p and p > 0:
-                            prev_prices_map[t] = p
-                elif isinstance(p_data, list):
-                    # Fallback for older format if it was saved as a list
-                    for entry in p_data:
-                        t = entry.get("ticker") or entry.get("symbol", "")
-                        p = entry.get("price", 0)
-                        if t and p and p > 0:
-                            prev_prices_map[t] = p
-                logger.info(f"  📅 User {uid}: loaded {len(prev_prices_map)} prices from prev day ({prev_daily.get('date', '?')})")
-            else:
-                logger.info(f"  📅 User {uid}: no previous daily prices found, fallback chain: marketPrices (Firestore) only")
-
-            # Build daily prices dict for this user (Frontend expects a DICT, not a list!).
-            # Priority: (1) fresh API price  →  (2) yesterday’s dailyPrice  →  (3) Firestore marketPrices
-            daily_prices_dict = {}
-            for ticker in tickers:
-                raw_price = price_results.get(ticker, {}).get("price", 0)
-
-                if raw_price and raw_price > 0:
-                    # ✅ Fresh API price available
-                    daily_prices_dict[ticker] = raw_price
-                else:
-                    # ❌ API failed or returned 0 — use yesterday's price as first fallback
-                    fallback_price = prev_prices_map.get(ticker, 0)
-
-                    if fallback_price and fallback_price > 0:
-                        prev_date = prev_daily.get("date", "?") if prev_daily else "?"
-                        fallback_source = f"prev_daily ({prev_date})"
-                    else:
-                        # Last resort: Firestore marketPrices (may be stale but still > 0)
-                        mkt = firestore_market_prices.get(ticker, {})
-                        fallback_price = mkt.get("exchangeRate") or mkt.get("price", 0)
-                        fallback_source = "marketPrices (Firestore)" if fallback_price else "none"
-
-                    if fallback_price and fallback_price > 0:
-                        daily_prices_dict[ticker] = fallback_price
-                        logger.warning(
-                            f"  ⚠️ User {uid}: API failed for {ticker} "
-                            f"(got {raw_price}), fallback → {fallback_source}: {fallback_price}"
-                        )
-                    else:
-                        logger.error(
-                            f"  ❌ User {uid}: No price available for {ticker} "
-                            f"(API=0, yesterday=0, Firestore=0) — skipping ticker in daily prices"
-                        )
-
-            # Save daily prices in DICT format (compatible with UI)
-            if daily_prices_dict:
-                fs.save_daily_prices(uid, utype, today, daily_prices_dict)
-                logger.info(f"  ✅ User {uid}: saved {len(daily_prices_dict)} daily prices")
-
-            # Calculate portfolio and snapshot.
-            # IMPORTANT: effective_market_prices from global scope might STILL have 0s 
-            # if the API failed today AND the Firestore already had 0s from yesterday.
-            # We MUST overlay the safely recovered per-user daily_prices_dict onto it
-            # so calculate_portfolio absolutely never receives a 0.
-            user_effective_prices = dict(effective_market_prices)
-            for t, p in daily_prices_dict.items():
-                if t in {"USDT", "USDC"}:
-                    user_effective_prices[t] = {"price": 1, "exchangeRate": p}
-                else:
-                    user_effective_prices[t] = {"price": p}
-
-            transactions = fs.get_transactions(uid, utype)
             external_assets = fs.get_external_assets(uid, utype)
             liabilities = fs.get_liabilities(uid, utype)
             funds = fs.get_funds(uid, utype)
 
             holdings = ps.calculate_holdings(transactions)
-            portfolio = ps.calculate_portfolio(holdings, user_effective_prices)
+            portfolio = ps.calculate_portfolio(holdings, effective_market_prices)
             snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, funds)
 
             fs.save_snapshot(uid, utype, today, snapshot)
             logger.info(f"  ✅ User {uid}: snapshot saved (netWorth={snapshot.get('netWorth', 0):,.0f})")
-
-
         except Exception as e:
             logger.error(f"  ❌ Error processing user {uid}: {e}", exc_info=True)
 

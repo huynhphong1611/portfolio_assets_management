@@ -19,10 +19,16 @@ class Settings:
     )
     FIREBASE_PROJECT_ID: str = os.getenv("VITE_FIREBASE_PROJECT_ID", "")
 
-    # JWT
+    # JWT (User)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "portfolio-mgmt-jwt-secret-change-in-production")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "72"))
+
+    # Admin Auth (separate from user JWT)
+    ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "")  # plaintext, compared via bcrypt
+    ADMIN_JWT_SECRET: str = os.getenv("ADMIN_JWT_SECRET", "admin-jwt-secret-change-in-production")
+    ADMIN_JWT_EXPIRE_HOURS: int = int(os.getenv("ADMIN_JWT_EXPIRE_HOURS", "8"))
 
     # External APIs
     VNSTOCK_API_ENABLED: bool = os.getenv("VNSTOCK_API_ENABLED", "true").lower() == "true"

@@ -223,6 +223,21 @@ export async function apiGetGoldSjcPrice() {
   return requestData('/prices/gold-sjc');
 }
 
+export async function apiGetSystemTickers() {
+  return requestData('/prices/system-tickers');
+}
+
+export async function apiAddSystemTicker(category, ticker) {
+  return requestData('/prices/system-tickers', {
+    method: 'POST',
+    body: { category, ticker }
+  });
+}
+
+export async function apiUserFetchLivePrices() {
+  return requestData('/prices/fetch-live', { method: 'POST' });
+}
+
 // ── Snapshots API ──
 
 export async function apiGetSnapshots() {

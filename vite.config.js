@@ -13,5 +13,7 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  // Allow /admin to be served by index.html (SPA fallback)
+  appType: 'spa',
 });

@@ -37,5 +37,10 @@ services:
       - VNSTOCK_API_ENABLED=${VNSTOCK_API_ENABLED:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FIREBASE_SERVICE_ACCOUNT_PATH=/app/firebase-service-account.json
+      # Admin credentials — forwarded explicitly from .env
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}
+      - ADMIN_JWT_EXPIRE_HOURS=${ADMIN_JWT_EXPIRE_HOURS:-8}
     # Override CMD for local dev with hot-reload
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

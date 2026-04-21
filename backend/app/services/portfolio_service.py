@@ -156,15 +156,9 @@ def calculate_portfolio(holdings: list, market_prices: dict = None) -> list:
         if h["ticker"] == "VNĐ":
             actual_value = h["qty"]
             market_price = 1
-        elif h["ticker"] == "USDT":
-            actual_value = h["qty"] * usdt_rate
-            market_price = usdt_rate
-        elif h.get("currency") == "USDT" or h.get("assetClass") == "Tài sản mã hóa":
-            if market.get("price"):
-                actual_value = h["qty"] * market["price"] * usdt_rate
-            else:
-                actual_value = h["qty"] * h["avgCost"]
-                market_price = h["avgCost"] / usdt_rate if usdt_rate else h["avgCost"]
+        elif h["ticker"] in ("USDT", "USDC"):
+            actual_value = h["qty"] * market_price if market_price else h["qty"] * usdt_rate
+            market_price = market_price or usdt_rate
         else:
             market_price = market.get("price") or h["avgCost"]
             actual_value = h["qty"] * market_price
