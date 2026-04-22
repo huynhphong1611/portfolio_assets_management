@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard, Briefcase, ArrowRightLeft, Scale, TrendingUp, TrendingDown,
   Wallet, PieChart, Activity, Menu, X, PlusCircle, RefreshCw, Search,
-  Upload, Loader2, Landmark, BarChart3, Camera, AlertTriangle, LogOut
+  Upload, Loader2, Landmark, BarChart3, Camera, AlertTriangle, LogOut, Calendar
 } from 'lucide-react';
 
 import { useAuth } from './contexts/AuthContext.jsx';
@@ -249,7 +249,7 @@ export default function App() {
       <div className="loading-screen">
         <div className="loading-content">
           <div className="loading-logo"><Activity size={40} /></div>
-          <h2 className="loading-title">Portfolio Manager V5</h2>
+          <h2 className="loading-title">Portfolio Manager</h2>
           <p className="loading-subtitle">Đang tải dữ liệu...</p>
           <div className="loading-bar"><div className="loading-bar-fill"></div></div>
         </div>
@@ -263,11 +263,11 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <AddTransactionModal 
-        isOpen={isModalOpen} 
-        onClose={handleCloseModal} 
-        onSuccess={refreshData} 
-        transactionToEdit={editingTransaction} 
+      <AddTransactionModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onSuccess={refreshData}
+        transactionToEdit={editingTransaction}
         portfolio={portfolio}
       />
 
@@ -327,7 +327,7 @@ export default function App() {
                 {item.icon} {item.label}
               </button>
             ))}
-            
+
             <div style={{ borderTop: '1px solid var(--border-color)', margin: '10px 1rem 5px 1rem', paddingTop: '10px' }}>
               <div style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
                 User: <strong style={{ color: 'var(--text-main)' }}>{currentUser.username}</strong>
@@ -527,23 +527,23 @@ export default function App() {
                               ? formatUSD(vndToUSD(item.actualValue, usdtVndRate))
                               : null;
                             return (
-                            <tr key={idx} className="table-row-hover">
-                              <td>
-                                <div className="td-ticker">{item.ticker}</div>
-                                <div className="td-meta">{item.assetClass}</div>
-                              </td>
-                              <td className="text-right td-mono">{formatQty(item.qty, item.assetClass)}</td>
-                              <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
-                              <td className="text-right td-mono td-bold">
-                                {formatVND(item.actualValue)}
-                                {usdHint && <div className="usd-hint">≈ {usdHint}</div>}
-                              </td>
-                              <td className="text-right">
-                                <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
-                                  {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)} ({formatPercent(item.pnlPercent)})
-                                </span>
-                              </td>
-                            </tr>
+                              <tr key={idx} className="table-row-hover">
+                                <td>
+                                  <div className="td-ticker">{item.ticker}</div>
+                                  <div className="td-meta">{item.assetClass}</div>
+                                </td>
+                                <td className="text-right td-mono">{formatQty(item.qty, item.assetClass)}</td>
+                                <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
+                                <td className="text-right td-mono td-bold">
+                                  {formatVND(item.actualValue)}
+                                  {usdHint && <div className="usd-hint">≈ {usdHint}</div>}
+                                </td>
+                                <td className="text-right">
+                                  <span className={`pnl-badge ${item.pnl >= 0 ? 'pnl-badge--up' : 'pnl-badge--down'}`}>
+                                    {item.pnl > 0 ? '+' : ''}{formatVND(item.pnl)} ({formatPercent(item.pnlPercent)})
+                                  </span>
+                                </td>
+                              </tr>
                             );
                           })}
                       </tbody>
@@ -632,7 +632,7 @@ export default function App() {
       </div>
       {/* Historical Snapshot Modal */}
       {isHistoricalSnapshotModalOpen && (
-        <HistoricalSnapshotModal 
+        <HistoricalSnapshotModal
           onClose={() => setIsHistoricalSnapshotModalOpen(false)}
           onSuccess={(res) => {
             alert(`✅ Đã tạo thành công ${res.total} snapshot lịch sử!`);
