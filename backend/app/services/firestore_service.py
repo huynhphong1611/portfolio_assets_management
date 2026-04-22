@@ -222,28 +222,6 @@ def save_snapshot(user_id: str, user_type: str, date_str: str, data: dict) -> No
     doc.set({**data, "date": date_str, "updatedAt": SERVER_TIMESTAMP})
 
 
-# ── Daily Prices ──
-
-def get_daily_prices(user_id: str, user_type: str, limit_count: int = 30) -> list[dict]:
-    col = _user_col(user_id, user_type, "dailyPrices")
-    docs = col.order_by("date", direction=Query.DESCENDING).limit(limit_count).stream()
-    return [{"id": d.id, **d.to_dict()} for d in docs]
-
-
-def save_daily_prices(user_id: str, user_type: str, date_str: str, prices: list) -> None:
-    doc = _user_doc(user_id, user_type, "dailyPrices", date_str)
-    doc.set({"date": date_str, "prices": prices, "updatedAt": SERVER_TIMESTAMP})
-
-
-def get_latest_daily_prices(user_id: str, user_type: str) -> Optional[dict]:
-    col = _user_col(user_id, user_type, "dailyPrices")
-    docs = list(col.order_by("date", direction=Query.DESCENDING).limit(1).stream())
-    if not docs:
-        return None
-    data = docs[0].to_dict()
-    return {"date": data.get("date"), "prices": data.get("prices")}
-
-
 # ── Market Prices (Global) ──
 
 def get_market_prices() -> dict:

@@ -259,41 +259,6 @@ export async function getSnapshotsRange(startDate, endDate) {
 
 
 // ============================================================
-// DAILY PRICES COLLECTION (Giá nhập tay hàng ngày)
-// ============================================================
-
-const DAILY_PRICES_COL = "dailyPrices";
-
-export function subscribeDailyPrices(callback) {
-  if (!currentUserId) return () => {};
-  const q = query(userCol(DAILY_PRICES_COL), orderBy("date", "desc"), limit(30));
-  return onSnapshot(q, (snapshot) => {
-    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, (error) => {
-    console.error("Error subscribing to daily prices:", error);
-    callback([]);
-  });
-}
-
-export async function saveDailyPrices(dateStr, prices) {
-  await setDoc(userDocRef(DAILY_PRICES_COL, dateStr), { date: dateStr, prices, updatedAt: serverTimestamp() });
-}
-
-export async function getDailyPrices(dateStr) {
-  const snap = await getDoc(userDocRef(DAILY_PRICES_COL, dateStr));
-  return snap.exists() ? snap.data().prices : null;
-}
-
-export async function getLatestDailyPrices() {
-  const q = query(userCol(DAILY_PRICES_COL), orderBy("date", "desc"), limit(1));
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const data = snapshot.docs[0].data();
-  return { date: data.date, prices: data.prices };
-}
-
-
-// ============================================================
 // FUNDS COLLECTION (Quỹ đầu tư)
 // ============================================================
 

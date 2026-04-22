@@ -190,17 +190,6 @@ export async function apiSaveMarketPrices(pricesMap) {
   return requestData('/prices/market', { method: 'POST', body: { prices: pricesMap } });
 }
 
-export async function apiGetDailyPrices() {
-  return requestData('/prices/daily');
-}
-
-export async function apiSaveDailyPrices(date, prices) {
-  return requestData('/prices/daily', {
-    method: 'POST',
-    body: { date, prices },
-  });
-}
-
 export async function apiGetLatestDailyPrices() {
   return requestData('/prices/daily/latest');
 }

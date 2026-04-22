@@ -4,7 +4,7 @@ Prices router — vnstock + CoinGecko price fetching + market prices management.
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import Optional
 
-from app.models.schemas import DailyPricesCreate, MarketPricesUpdate, APIResponse
+from app.models.schemas import MarketPricesUpdate, APIResponse
 from app.routers.auth import get_current_user
 from app.services import firestore_service as fs
 from app.services import price_service

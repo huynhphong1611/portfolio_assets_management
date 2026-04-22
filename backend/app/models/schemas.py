@@ -81,11 +81,7 @@ class LiabilityUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-# ── Daily Prices ──
-
-class DailyPricesCreate(BaseModel):
-    date: str
-    prices: dict  # {ticker: price} map, e.g. {"USDT": 26500, "GOLD": 17650000}
+# ── Market Prices ──
 
 class MarketPricesUpdate(BaseModel):
     prices: dict  # {ticker: {price, exchangeRate?, ...}} map

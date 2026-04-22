@@ -16,7 +16,6 @@ import {
 import {
   apiGetTransactions, apiGetExternalAssets, apiGetRebalanceTargets,
   apiGetMarketPrices, apiGetLiabilities, apiGetSnapshots,
-  apiGetDailyPrices,
   apiSaveSnapshot
 } from './services/api.js';
 import { importCSVToFirestore, CSV_RAW_DATA } from './scripts/importCSV.js';
@@ -27,7 +26,7 @@ import AssetAllocationChart from './components/AssetAllocationChart.jsx';
 import RebalanceSettings from './components/RebalanceSettings.jsx';
 import NetWorthExternalManager from './components/NetWorthExternalManager.jsx';
 import LiabilitiesManager from './components/LiabilitiesManager.jsx';
-import PriceManager from './components/PriceManager.jsx';
+
 import SystemPricesBoard from './components/SystemPricesBoard.jsx';
 import LineChart from './components/charts/LineChart.jsx';
 import CumulativePerformanceChart from './components/CumulativePerformanceChart.jsx';
@@ -51,7 +50,7 @@ export default function App() {
   const [marketPrices, setMarketPrices] = useState({});
   const [liabilities, setLiabilities] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
-  const [dailyPrices, setDailyPrices] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
 
@@ -63,7 +62,7 @@ export default function App() {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const [txs, extAssets, targets, mktPrices, debts, snaps, dailyP] =
+      const [txs, extAssets, targets, mktPrices, debts, snaps] =
         await Promise.all([
           apiGetTransactions().catch(() => []),
           apiGetExternalAssets().catch(() => []),
@@ -71,7 +70,6 @@ export default function App() {
           apiGetMarketPrices().catch(() => ({})),
           apiGetLiabilities().catch(() => []),
           apiGetSnapshots().catch(() => []),
-          apiGetDailyPrices().catch(() => []),
         ]);
 
       setTransactions(txs || []);
@@ -80,7 +78,6 @@ export default function App() {
       setMarketPrices(mktPrices || {});
       setLiabilities(debts || []);
       setSnapshots(snaps || []);
-      setDailyPrices(dailyP || []);
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
