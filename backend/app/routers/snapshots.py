@@ -108,9 +108,12 @@ async def backfill_snapshots(
         if not txs_as_of:
             cur += timedelta(days=1)
             continue
+        
+        # Calculate holdings early so we know which tickers we need
+        holdings = ps.calculate_holdings(txs_as_of)
 
         # 2. Resolve prices for the target date
-        #    Priority: system daily prices for date → current marketPrices
+        #    Priority: system daily prices for date → API fetch → current marketPrices
         system_prices_doc = fs.get_system_daily_prices(date_str)
         if system_prices_doc and system_prices_doc.get("prices"):
             raw_prices = system_prices_doc["prices"]     # {ticker: price_vnd}
@@ -127,12 +130,66 @@ async def backfill_snapshots(
                 else:
                     market_prices[ticker] = {"price": price_vnd}
         else:
-            # No historical prices stored → use current market prices
-            market_prices = current_market_prices
-            logger.warning(f"  No system prices for {date_str}, using current market prices")
+            logger.info(f"  No system prices for {date_str}, fetching from API...")
+            ticker_config = fs.get_supported_tickers()
+            all_tickers = (
+                ticker_config.get("stocks", []) +
+                ticker_config.get("crypto", []) +
+                ticker_config.get("funds", [])
+            )
+            ticker_type_map = {}
+            for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
+            for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
+            for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
+            
+            # Ensure all tickers from user's holdings are included
+            for h in holdings:
+                ticker = h.get("ticker")
+                if ticker and ticker not in all_tickers and ticker != "VNĐ":
+                    all_tickers.append(ticker)
+
+            from app.services import price_service
+            results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=date_str, ticker_type_map=ticker_type_map)
+            
+            prices_vnd = {}
+            usdt_vnd = 0
+            usdt_result = results.get("USDT")
+            if usdt_result and usdt_result.get("price", 0) > 0:
+                usdt_vnd = usdt_result["price"]
+            if not usdt_vnd:
+                usdt_vnd = usdt_result.get("exchangeRate", 25500) if usdt_result else 25500
+
+            for ticker, result in results.items():
+                raw_price = result.get("price", 0)
+                if not raw_price or raw_price <= 0:
+                    continue
+                ticker_type = result.get("type", "stock")
+                if ticker_type == "crypto" and ticker not in {"USDT", "USDC"}:
+                    prices_vnd[ticker] = round(raw_price * usdt_vnd)
+                else:
+                    prices_vnd[ticker] = raw_price
+            
+            # Save fetched prices for future use
+            if prices_vnd:
+                fs.save_system_daily_prices(date_str, prices_vnd, usdt_vnd)
+
+            market_prices = {}
+            for ticker, price_vnd in prices_vnd.items():
+                if ticker in {"USDT", "USDC"}:
+                    market_prices[ticker] = {
+                        "price": price_vnd,
+                        "exchangeRate": price_vnd,
+                    }
+                else:
+                    market_prices[ticker] = {"price": price_vnd}
+
+            # Fallback to current market prices for missing ones
+            for ticker, current_price in current_market_prices.items():
+                if ticker not in market_prices:
+                    market_prices[ticker] = current_price
+                    logger.warning(f"  Missing API price for {ticker} at {date_str}, fallback to current")
 
         # 3. Calculate portfolio as of that date
-        holdings  = ps.calculate_holdings(txs_as_of)
         portfolio = ps.calculate_portfolio(holdings, market_prices)
         snapshot  = ps.generate_snapshot(portfolio, all_external, all_liabilities, txs_as_of)
 

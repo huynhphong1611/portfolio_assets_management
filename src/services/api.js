@@ -238,9 +238,9 @@ export async function apiSaveSnapshot(data) {
 }
 
 export async function apiBackfillSnapshots(startDate, endDate = null, overwrite = true) {
-  return requestData('/snapshots/backfill', { 
-    method: 'POST', 
-    body: { start_date: startDate, end_date: endDate, overwrite } 
+  return requestData('/snapshots/backfill', {
+    method: 'POST',
+    body: { start_date: startDate, end_date: endDate, overwrite }
   });
 }
 
