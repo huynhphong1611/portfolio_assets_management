@@ -222,6 +222,13 @@ def save_snapshot(user_id: str, user_type: str, date_str: str, data: dict) -> No
     doc.set({**data, "date": date_str, "updatedAt": SERVER_TIMESTAMP})
 
 
+def get_snapshot_by_date(user_id: str, user_type: str, date_str: str) -> Optional[dict]:
+    """Return a single snapshot document for a specific date, or None if missing."""
+    doc = _user_doc(user_id, user_type, "dailySnapshots", date_str)
+    snap = doc.get()
+    return {snap.id: snap.to_dict()} if snap.exists else None
+
+
 # ── Market Prices (Global) ──
 
 def get_market_prices() -> dict:

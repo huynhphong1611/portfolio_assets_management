@@ -237,6 +237,13 @@ export async function apiSaveSnapshot(data) {
   return requestData('/snapshots', { method: 'POST', body: data });
 }
 
+export async function apiBackfillSnapshots(startDate, endDate = null, overwrite = true) {
+  return requestData('/snapshots/backfill', { 
+    method: 'POST', 
+    body: { start_date: startDate, end_date: endDate, overwrite } 
+  });
+}
+
 // ── Settings API ──
 
 export async function apiGetRebalanceTargets() {

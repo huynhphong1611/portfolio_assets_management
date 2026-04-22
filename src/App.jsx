@@ -26,6 +26,7 @@ import AssetAllocationChart from './components/AssetAllocationChart.jsx';
 import RebalanceSettings from './components/RebalanceSettings.jsx';
 import NetWorthExternalManager from './components/NetWorthExternalManager.jsx';
 import LiabilitiesManager from './components/LiabilitiesManager.jsx';
+import HistoricalSnapshotModal from './components/HistoricalSnapshotModal.jsx';
 
 import SystemPricesBoard from './components/SystemPricesBoard.jsx';
 import LineChart from './components/charts/LineChart.jsx';
@@ -39,6 +40,7 @@ export default function App() {
   const { currentUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isHistoricalSnapshotModalOpen, setIsHistoricalSnapshotModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -303,6 +305,9 @@ export default function App() {
           <button className="btn-glass import-btn" onClick={handleManualSnapshot}>
             <Camera size={16} /> Snapshot hôm nay
           </button>
+          <button className="btn-glass import-btn" onClick={() => setIsHistoricalSnapshotModalOpen(true)}>
+            <Calendar size={16} /> Snapshot quá khứ
+          </button>
         </div>
       </aside>
 
@@ -337,6 +342,9 @@ export default function App() {
               )}
               <button className="nav-item" onClick={() => { handleManualSnapshot(); setIsMobileMenuOpen(false); }}>
                 <Camera size={20} /> Snapshot hôm nay
+              </button>
+              <button className="nav-item" onClick={() => { setIsHistoricalSnapshotModalOpen(true); setIsMobileMenuOpen(false); }}>
+                <Calendar size={20} /> Snapshot quá khứ
               </button>
             </div>
           </div>
@@ -622,6 +630,17 @@ export default function App() {
 
         <button className="fab" onClick={() => setIsModalOpen(true)}><PlusCircle size={24} /></button>
       </div>
+      {/* Historical Snapshot Modal */}
+      {isHistoricalSnapshotModalOpen && (
+        <HistoricalSnapshotModal 
+          onClose={() => setIsHistoricalSnapshotModalOpen(false)}
+          onSuccess={(res) => {
+            alert(`✅ Đã tạo thành công ${res.total} snapshot lịch sử!`);
+            refreshData();
+          }}
+        />
+      )}
+
     </div>
   );
 }
