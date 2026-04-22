@@ -104,8 +104,7 @@ def daily_price_snapshot_job():
     ticker_config = fs.get_supported_tickers()
     all_tickers = list(set(
         ticker_config.get("stocks", []) +
-        ticker_config.get("crypto", []) +
-        ticker_config.get("funds", [])
+        ticker_config.get("crypto", [])
     ))
 
     if not all_tickers:
@@ -130,7 +129,6 @@ def daily_price_snapshot_job():
     ticker_type_map = {}
     for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
     for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
-    for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
 
     # 2. Batch fetch all prices
     price_results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=today, ticker_type_map=ticker_type_map)
@@ -234,11 +232,10 @@ def daily_price_snapshot_job():
 
             external_assets = fs.get_external_assets(uid, utype)
             liabilities = fs.get_liabilities(uid, utype)
-            funds = fs.get_funds(uid, utype)
 
             holdings = ps.calculate_holdings(transactions)
             portfolio = ps.calculate_portfolio(holdings, effective_market_prices)
-            snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, funds)
+            snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, transactions)
 
             fs.save_snapshot(uid, utype, today, snapshot)
             logger.info(f"  ✅ User {uid}: snapshot saved (netWorth={snapshot.get('netWorth', 0):,.0f})")

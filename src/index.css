@@ -1614,8 +1614,13 @@ body {
 
 .tx-type-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
+}
+@media (min-width: 480px) {
+  .tx-type-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .tx-type-btn {
@@ -1654,6 +1659,11 @@ body {
   border-color: var(--color-rose-500);
   background: var(--color-rose-50);
   color: var(--color-rose-700);
+}
+.tx-type-btn--active.tx-type-btn--orange {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 

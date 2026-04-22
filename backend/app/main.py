@@ -3,7 +3,7 @@ Portfolio Management Backend — FastAPI Application.
 
 Unified backend handling:
 - Authentication (Guest + Firebase Auth)
-- Firestore CRUD (transactions, funds, assets, liabilities, snapshots)
+- Firestore CRUD (transactions, assets, liabilities, snapshots)
 - Price fetching (vnstock, CoinGecko)
 - Portfolio calculations
 - Dashboard aggregation
@@ -63,14 +63,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Routers ──
 
-from app.routers import auth, transactions, funds, external_assets, liabilities
+from app.routers import auth, transactions, external_assets, liabilities
 from app.routers import prices, snapshots, settings as settings_router, dashboard
 from app.routers import scheduler as scheduler_router
 from app.routers import admin as admin_router
 
 app.include_router(auth.router)
 app.include_router(transactions.router)
-app.include_router(funds.router)
 app.include_router(external_assets.router)
 app.include_router(liabilities.router)
 app.include_router(prices.router)

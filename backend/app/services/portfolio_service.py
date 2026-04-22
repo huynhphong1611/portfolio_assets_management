@@ -1,5 +1,12 @@
 """
-Portfolio Calculator Engine — Python port of portfolioCalculator.js.
+Portfolio Calculator Engine v3 — Python port of portfolioCalculator.js.
+
+Capital accounting model:
+  - Nạp tiền  → VNĐ_CASH.qty ↑, VNĐ_CASH.totalCost ↑ (net capital in)
+  - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
+  - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; cash.totalCost UNCHANGED)
+  - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; cash.totalCost UNCHANGED)
+Total P&L = all holdings at market − net capital deposited
 
 Handles: Holdings, Portfolio valuation, Net Worth, Rebalance, P&L, Snapshot generation.
 """
@@ -52,87 +59,92 @@ def parse_vietnamese_date(date_str: str) -> datetime:
 
 def calculate_holdings(transactions: list) -> list:
     """
-    Calculate current holdings from transaction history.
-    Equivalent to JS calculateHoldings().
+    Calculate current holdings from transaction history. v3 capital model.
+    Mirrors JS calculateHoldings().
     """
     if not transactions:
         return []
 
     sorted_txs = sorted(transactions, key=lambda t: parse_vietnamese_date(t.get("date", "")))
-
     holdings_map = {}
 
-    for tx in sorted_txs:
-        ticker = tx.get("ticker", "")
-        tx_type = tx.get("transactionType", "")
-        asset_class = tx.get("assetClass", "")
-        quantity = tx.get("quantity", 0)
-        total_vnd = tx.get("totalVND", 0)
-        storage = tx.get("storage", "")
-        currency = tx.get("currency", "VNĐ")
-        fund_id = tx.get("fundId")
-        fund_name = tx.get("fundName")
+    def ensure_cash(storage: str = "") -> None:
+        if "VNĐ_CASH" not in holdings_map:
+            holdings_map["VNĐ_CASH"] = {
+                "ticker": "VNĐ", "assetClass": "Tiền mặt VNĐ",
+                "qty": 0,          # actual liquid balance
+                "totalCost": 0,    # net capital deposited (Nạp − Rút only)
+                "avgCost": 1,
+                "storage": storage or "", "currency": "VNĐ",
+            }
 
-        # Handle cash deposits
+    for tx in sorted_txs:
+        ticker     = tx.get("ticker", "")
+        tx_type    = tx.get("transactionType", "")
+        asset_class = tx.get("assetClass", "")
+        quantity   = tx.get("quantity", 0)
+        total_vnd  = tx.get("totalVND", 0)
+        storage    = tx.get("storage", "")
+        currency   = tx.get("currency", "VNĐ")
+        amount     = abs(total_vnd or quantity or 0)
+
+        # ── Cash-flow transactions ──
         if not ticker or ticker == "VNĐ":
-            if asset_class == "Tiền mặt VNĐ" and tx_type == "Nạp tiền":
-                if "VNĐ_CASH" not in holdings_map:
-                    holdings_map["VNĐ_CASH"] = {
-                        "ticker": "VNĐ", "assetClass": "Tiền mặt VNĐ",
-                        "qty": 0, "totalCost": 0, "avgCost": 1,
-                        "storage": storage or "", "currency": "VNĐ",
-                        "fundId": fund_id, "fundName": fund_name,
-                    }
-                holdings_map["VNĐ_CASH"]["qty"] += abs(quantity or total_vnd or 0)
-                holdings_map["VNĐ_CASH"]["totalCost"] = holdings_map["VNĐ_CASH"]["qty"]
+            if asset_class == "Tiền mặt VNĐ":
+                if tx_type == "Nạp tiền":
+                    ensure_cash(storage)
+                    holdings_map["VNĐ_CASH"]["qty"]       += amount
+                    holdings_map["VNĐ_CASH"]["totalCost"] += amount  # FIX: capital in
+                elif tx_type == "Rút tiền":
+                    ensure_cash(storage)
+                    holdings_map["VNĐ_CASH"]["qty"]       -= amount
+                    holdings_map["VNĐ_CASH"]["totalCost"] -= amount  # capital out
             continue
 
+        # ── Asset transactions ──
         key = ticker
-
         if key not in holdings_map:
             holdings_map[key] = {
                 "ticker": ticker, "assetClass": asset_class or "Khác",
                 "qty": 0, "totalCost": 0, "avgCost": 0,
                 "storage": storage or "", "currency": currency or "VNĐ",
-                "fundId": fund_id, "fundName": fund_name,
             }
 
         entry = holdings_map[key]
-        qty = abs(quantity or 0)
+        qty  = abs(quantity or 0)
         cost = abs(total_vnd or 0)
 
         if tx_type == "Mua":
             entry["totalCost"] += cost
-            entry["qty"] += qty
-            entry["avgCost"] = entry["totalCost"] / entry["qty"] if entry["qty"] > 0 else 0
+            entry["qty"]       += qty
+            entry["avgCost"]    = entry["totalCost"] / entry["qty"] if entry["qty"] > 0 else 0
             if storage:
                 entry["storage"] = storage
-            if fund_id:
-                entry["fundId"] = fund_id
-                entry["fundName"] = fund_name
+            # Cash decreases, but net capital is unchanged
+            if "VNĐ_CASH" in holdings_map:
+                holdings_map["VNĐ_CASH"]["qty"] = max(0, holdings_map["VNĐ_CASH"]["qty"] - cost)
+                # FIX: do NOT touch totalCost
 
         elif tx_type == "Bán":
             sold_cost_basis = entry["avgCost"] * qty
-            entry["qty"] -= qty
+            entry["qty"]       -= qty
             entry["totalCost"] -= sold_cost_basis
             if entry["qty"] <= 0.0001:
                 entry["qty"] = 0
                 entry["totalCost"] = 0
                 entry["avgCost"] = 0
-
-        # Update VNĐ cash if it exists
-        if "VNĐ_CASH" in holdings_map:
-            if tx_type == "Mua":
-                holdings_map["VNĐ_CASH"]["qty"] -= cost
-                holdings_map["VNĐ_CASH"]["totalCost"] = max(0, holdings_map["VNĐ_CASH"]["qty"])
-            elif tx_type == "Bán":
+            else:
+                entry["avgCost"] = entry["totalCost"] / entry["qty"]
+            # Cash increases (proceeds), but net capital is unchanged
+            if "VNĐ_CASH" in holdings_map:
                 holdings_map["VNĐ_CASH"]["qty"] += cost
-                holdings_map["VNĐ_CASH"]["totalCost"] = holdings_map["VNĐ_CASH"]["qty"]
+                # FIX: do NOT touch totalCost
 
+    # Keep VNĐ_CASH even when qty == 0 as long as totalCost > 0
     result = []
     for h in holdings_map.values():
-        if h["qty"] > 0.0001:
-            h["avgCost"] = h["totalCost"] / h["qty"] if h["qty"] > 0 else 0
+        if h["qty"] > 0.0001 or (h["ticker"] == "VNĐ" and h["totalCost"] > 0):
+            h["avgCost"] = 1 if h["ticker"] == "VNĐ" else (h["totalCost"] / h["qty"] if h["qty"] > 0 else 0)
             result.append(h)
     return result
 
@@ -178,8 +190,6 @@ def calculate_portfolio(holdings: list, market_prices: dict = None) -> list:
             "pnlPercent": pnl_percent,
             "storage": h.get("storage", ""),
             "currency": h.get("currency", "VNĐ"),
-            "fundId": h.get("fundId"),
-            "fundName": h.get("fundName"),
         })
     return result
 
@@ -285,56 +295,55 @@ def calculate_rebalance(portfolio: list, target_weights: dict = None) -> list:
     return sorted(rebalance_data, key=lambda x: x["actualValue"], reverse=True)
 
 
-def calculate_total_pnl(portfolio: list) -> dict:
+def calculate_total_pnl(portfolio: list, transactions: list = None) -> dict:
     """
-    Calculate total P&L across all investment positions.
-    Equivalent to JS calculateTotalPnL().
+    Calculate true portfolio P&L using capital-basis accounting.
+    P&L = total current value (all assets + cash) − net capital deposited.
+    Mirrors JS calculateTotalPnL() v3.
     """
-    invest_items = [p for p in portfolio if p.get("assetClass") != "Tiền mặt VNĐ"]
-    total_value = sum(p.get("actualValue", 0) for p in invest_items)
-    total_cost = sum(p.get("totalCost", 0) for p in invest_items)
-    total_pnl = total_value - total_cost
-    total_pnl_percent = (total_pnl / total_cost * 100) if total_cost > 0 else 0
+    if transactions is None:
+        transactions = []
+
+    # 1. Total current value = ALL portfolio items (assets + cash)
+    total_value = sum(p.get("actualValue", 0) for p in portfolio)
+
+    # 2. Net capital — prefer VNĐ_CASH.totalCost (most accurate)
+    cash_item = next((p for p in portfolio if p.get("ticker") == "VNĐ"), None)
+
+    if cash_item and cash_item.get("totalCost", 0) > 0:
+        net_capital = cash_item["totalCost"]
+    elif transactions:
+        # Fallback: derive from transaction log
+        net_capital = 0.0
+        for t in transactions:
+            amt = abs(t.get("totalVND", 0) or 0)
+            if t.get("transactionType") == "Nạp tiền":
+                net_capital += amt
+            elif t.get("transactionType") == "Rút tiền":
+                net_capital -= amt
+    else:
+        # Last resort: sum of cost basis
+        net_capital = sum(p.get("totalCost", 0) for p in portfolio)
+
+    total_pnl = total_value - net_capital
+    total_pnl_percent = (total_pnl / net_capital * 100) if net_capital > 0 else 0
 
     return {
         "totalValue": total_value,
-        "totalCost": total_cost,
+        "totalCost": net_capital,
         "totalPnL": total_pnl,
         "totalPnLPercent": total_pnl_percent,
     }
 
 
 def generate_snapshot(portfolio: list, external_assets: list,
-                      liabilities: list, funds: list) -> dict:
+                      liabilities: list, transactions: list = None) -> dict:
     """
     Generate a daily snapshot of the portfolio state.
-    Equivalent to JS generateSnapshot().
+    Mirrors JS generateSnapshot().
     """
-    pnl = calculate_total_pnl(portfolio)
-    nw = calculate_net_worth(portfolio, external_assets, liabilities)
-
-    funds_breakdown = {}
-    if funds:
-        for fund in funds:
-            fund_asset_class = fund.get("assetClass", "")
-            fund_holdings = [
-                p for p in portfolio if (
-                    p.get("assetClass") == fund_asset_class or
-                    (fund_asset_class == "Tiền mặt" and
-                     p.get("assetClass") in ("Tiền mặt VNĐ", "Tiền mặt USD"))
-                )
-            ]
-            holdings_value = sum(h.get("actualValue", 0) for h in fund_holdings)
-            holdings_cost = sum(h.get("totalCost", 0) for h in fund_holdings)
-            cash = float(fund.get("cashBalance", 0) or 0)
-
-            funds_breakdown[fund.get("name", "")] = {
-                "value": holdings_value + cash,
-                "holdingsValue": holdings_value,
-                "cash": cash,
-                "cost": holdings_cost,
-                "pnl": holdings_value - holdings_cost,
-            }
+    pnl = calculate_total_pnl(portfolio, transactions or [])
+    nw  = calculate_net_worth(portfolio, external_assets, liabilities)
 
     return {
         "totalAssets": nw["totalAssets"],
@@ -344,5 +353,4 @@ def generate_snapshot(portfolio: list, external_assets: list,
         "portfolioCost": pnl["totalCost"],
         "portfolioPnL": pnl["totalPnL"],
         "portfolioPnLPercent": pnl["totalPnLPercent"],
-        "funds": funds_breakdown,
     }

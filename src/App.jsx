@@ -16,7 +16,7 @@ import {
 import {
   apiGetTransactions, apiGetExternalAssets, apiGetRebalanceTargets,
   apiGetMarketPrices, apiGetLiabilities, apiGetSnapshots,
-  apiGetDailyPrices, apiGetFunds, apiInitializeFunds,
+  apiGetDailyPrices,
   apiSaveSnapshot
 } from './services/api.js';
 import { importCSVToFirestore, CSV_RAW_DATA } from './scripts/importCSV.js';
@@ -27,7 +27,6 @@ import AssetAllocationChart from './components/AssetAllocationChart.jsx';
 import RebalanceSettings from './components/RebalanceSettings.jsx';
 import NetWorthExternalManager from './components/NetWorthExternalManager.jsx';
 import LiabilitiesManager from './components/LiabilitiesManager.jsx';
-import FundManager from './components/FundManager.jsx';
 import PriceManager from './components/PriceManager.jsx';
 import SystemPricesBoard from './components/SystemPricesBoard.jsx';
 import LineChart from './components/charts/LineChart.jsx';
@@ -53,7 +52,6 @@ export default function App() {
   const [liabilities, setLiabilities] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
   const [dailyPrices, setDailyPrices] = useState([]);
-  const [funds, setFunds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
 
@@ -65,7 +63,7 @@ export default function App() {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const [txs, extAssets, targets, mktPrices, debts, snaps, dailyP, fundsData] =
+      const [txs, extAssets, targets, mktPrices, debts, snaps, dailyP] =
         await Promise.all([
           apiGetTransactions().catch(() => []),
           apiGetExternalAssets().catch(() => []),
@@ -74,7 +72,6 @@ export default function App() {
           apiGetLiabilities().catch(() => []),
           apiGetSnapshots().catch(() => []),
           apiGetDailyPrices().catch(() => []),
-          apiGetFunds().catch(() => []),
         ]);
 
       setTransactions(txs || []);
@@ -84,14 +81,6 @@ export default function App() {
       setLiabilities(debts || []);
       setSnapshots(snaps || []);
       setDailyPrices(dailyP || []);
-      setFunds(fundsData || []);
-
-      // Initialize default funds if empty
-      if (!fundsData || fundsData.length === 0) {
-        await apiInitializeFunds().catch(console.error);
-        const newFunds = await apiGetFunds().catch(() => []);
-        setFunds(newFunds || []);
-      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
@@ -113,7 +102,7 @@ export default function App() {
   // ============================================================
 
   useEffect(() => {
-    if (!currentUser || loading || transactions.length === 0 || funds.length === 0) return;
+    if (!currentUser || loading || transactions.length === 0) return;
 
     const today = new Date().toISOString().slice(0, 10);
     const alreadyExists = snapshots.some(s => s.date === today);
@@ -122,13 +111,13 @@ export default function App() {
     // Recalculate for snapshot
     const h = calculateHoldings(transactions);
     const p = calculatePortfolio(h, marketPrices);
-    const snap = generateSnapshot(p, externalAssets, liabilities, funds);
+    const snap = generateSnapshot(p, externalAssets, liabilities);
     apiSaveSnapshot({ date: today, ...snap }).then(() => {
       console.log('📸 Auto-snapshot saved for', today);
       // Re-fetch snapshots
       apiGetSnapshots().then(s => setSnapshots(s || []));
     }).catch(console.error);
-  }, [loading, transactions.length, snapshots.length, funds.length]);
+  }, [loading, transactions.length, snapshots.length]);
 
   // ============================================================
   // CALCULATED DATA
@@ -138,7 +127,7 @@ export default function App() {
   const portfolio = useMemo(() => calculatePortfolio(holdings, marketPrices), [holdings, marketPrices]);
   const netWorth = useMemo(() => calculateNetWorth(portfolio, externalAssets, liabilities), [portfolio, externalAssets, liabilities]);
   const rebalanceData = useMemo(() => calculateRebalance(portfolio, rebalanceTargets), [portfolio, rebalanceTargets]);
-  const pnlSummary = useMemo(() => calculateTotalPnL(portfolio, funds), [portfolio, funds]);
+  const pnlSummary = useMemo(() => calculateTotalPnL(portfolio, transactions), [portfolio, transactions]);
 
   // Growth chart data from snapshots
   const growthChartData = useMemo(() => {
@@ -168,17 +157,10 @@ export default function App() {
       classMap[p.assetClass] += p.actualValue;
     });
 
-    // Include remaining cash from all funds into "Tiền mặt VNĐ"
-    const totalFundCash = funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0);
-    if (totalFundCash > 0) {
-      if (!classMap['Tiền mặt VNĐ']) classMap['Tiền mặt VNĐ'] = 0;
-      classMap['Tiền mặt VNĐ'] += totalFundCash;
-    }
-
     return Object.entries(classMap)
       .filter(([, v]) => v > 0)
       .map(([label, value], i) => ({ label, value, color: COLORS[i % COLORS.length] }));
-  }, [portfolio, funds]);
+  }, [portfolio]);
 
   // ============================================================
   // HANDLERS
@@ -197,7 +179,7 @@ export default function App() {
   const handleManualSnapshot = async () => {
     const today = new Date().toISOString().slice(0, 10);
     try {
-      const snap = generateSnapshot(portfolio, externalAssets, liabilities, funds);
+      const snap = generateSnapshot(portfolio, externalAssets, liabilities);
       await apiSaveSnapshot({ date: today, ...snap });
       alert('📸 Snapshot đã được lưu cho ngày ' + today);
       refreshData();
@@ -207,17 +189,16 @@ export default function App() {
   const handleLiveRefreshAndSnapshot = async () => {
     try {
       // 1. Fetch latest raw data from DB to ensure we compute with fresh data
-      const [txs, extAssets, debts, fundsData, mktPrices] = await Promise.all([
+      const [txs, extAssets, debts, mktPrices] = await Promise.all([
         apiGetTransactions().catch(() => []),
         apiGetExternalAssets().catch(() => []),
         apiGetLiabilities().catch(() => []),
-        apiGetFunds().catch(() => []),
         apiGetMarketPrices().catch(() => ({}))
       ]);
       // 2. Compute inline
       const h = calculateHoldings(txs || []);
       const p = calculatePortfolio(h, mktPrices || {});
-      const snap = generateSnapshot(p, extAssets || [], debts || [], fundsData || []);
+      const snap = generateSnapshot(p, extAssets || [], debts || []);
       // 3. Save snapshot for today
       const today = new Date().toISOString().slice(0, 10);
       await apiSaveSnapshot({ date: today, ...snap });
@@ -245,7 +226,6 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "Tổng quan" },
     { id: 'portfolio', icon: <Briefcase size={20} />, label: "Danh mục Đầu tư" },
-    { id: 'funds', icon: <Landmark size={20} />, label: "Quỹ Đầu tư" },
     { id: 'rebalance', icon: <Scale size={20} />, label: "Tái cơ cấu" },
     { id: 'transactions', icon: <ArrowRightLeft size={20} />, label: "Nhật ký GD" },
     { id: 'system', icon: <BarChart3 size={20} />, label: "Dữ liệu Thị trường" },
@@ -287,7 +267,6 @@ export default function App() {
       <AddTransactionModal 
         isOpen={isModalOpen} 
         onClose={handleCloseModal} 
-        funds={funds} 
         onSuccess={refreshData} 
         transactionToEdit={editingTransaction} 
         portfolio={portfolio}
@@ -463,7 +442,7 @@ export default function App() {
                   <div>
                     <h2 className="section-title">Danh mục Đầu tư</h2>
                     <p className="section-subtitle">
-                      Tổng hợp tất cả quỹ — {portfolio.filter(p => p.ticker !== 'VNĐ').length} mã tài sản
+                      Tổng hợp các tài sản — {portfolio.filter(p => p.ticker !== 'VNĐ').length} mã
                     </p>
                   </div>
                 </div>
@@ -496,9 +475,6 @@ export default function App() {
                   <div className="glass-card section-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <h3 className="card-title" style={{ margin: 0 }}>Phân bổ theo loại tài sản</h3>
-                      <span className="form-hint-cash">
-                        Tổng tiền mặt tại các quỹ: {formatVND(funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0))}
-                      </span>
                     </div>
                     <AssetAllocationChart data={allocationChartData} size={240} />
                   </div>
@@ -549,7 +525,7 @@ export default function App() {
                             <tr key={idx} className="table-row-hover">
                               <td>
                                 <div className="td-ticker">{item.ticker}</div>
-                                <div className="td-meta">{item.assetClass}{item.fundName ? ` • ${item.fundName}` : ''}</div>
+                                <div className="td-meta">{item.assetClass}</div>
                               </td>
                               <td className="text-right td-mono">{formatQty(item.qty, item.assetClass)}</td>
                               <td className="text-right td-mono td-muted">{formatVND(item.totalCost)}</td>
@@ -570,11 +546,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            )}
-
-            {/* ===== TAB 3: FUNDS ===== */}
-            {activeTab === 'funds' && (
-              <FundManager funds={funds} portfolio={portfolio} transactions={transactions} snapshots={snapshots} onUpdate={refreshData} />
             )}
 
             {/* ===== TAB 4: REBALANCE ===== */}
@@ -640,7 +611,7 @@ export default function App() {
                     <PlusCircle size={18} /> Thêm Giao dịch
                   </button>
                 </div>
-                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} funds={funds} />
+                <TransactionLog transactions={transactions} loading={loading} onUpdate={refreshData} onEdit={handleEditTransaction} />
               </div>
             )}
 

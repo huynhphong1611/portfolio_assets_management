@@ -49,34 +49,6 @@ class TransactionCreate(BaseModel):
     pnlPercent: Optional[float] = 0
     storage: Optional[str] = ""
     notes: Optional[str] = ""
-    fundId: Optional[str] = None
-    fundName: Optional[str] = None
-
-
-# ── Fund ──
-
-class FundCreate(BaseModel):
-    name: str
-    assetClass: str
-    cashBalance: float = 0
-    description: Optional[str] = ""
-    color: Optional[str] = "#3b82f6"
-
-class FundUpdate(BaseModel):
-    name: Optional[str] = None
-    assetClass: Optional[str] = None
-    cashBalance: Optional[float] = None
-    description: Optional[str] = None
-    color: Optional[str] = None
-
-class FundCashHistoryCreate(BaseModel):
-    fundId: str
-    fundName: str
-    type: Literal["deposit", "withdraw"]
-    amount: float
-    balanceBefore: float
-    balanceAfter: float
-    note: Optional[str] = ""
 
 
 # ── External Asset ──

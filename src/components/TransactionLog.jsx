@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown, Edit, ChevronDown, ChevronUp } from 'lucide-react';
-import { apiDeleteTransaction, apiUpdateFund } from '../services/api';
+import { apiDeleteTransaction } from '../services/api';
 import { formatVND, formatNum, formatQty } from '../utils/formatters';
 
 const TX_TYPE_STYLES = {
@@ -35,7 +35,7 @@ const MONTH_NAMES = {
   '09': 'Tháng 9', '10': 'Tháng 10', '11': 'Tháng 11', '12': 'Tháng 12',
 };
 
-export default function TransactionLog({ transactions = [], loading = false, onUpdate, onEdit, funds = [] }) {
+export default function TransactionLog({ transactions = [], loading = false, onUpdate, onEdit }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterAssetClass, setFilterAssetClass] = useState('all');
@@ -146,29 +146,6 @@ export default function TransactionLog({ transactions = [], loading = false, onU
     if (!confirm('Bạn có chắc muốn xóa giao dịch này?')) return;
     try {
       await apiDeleteTransaction(tx.id);
-      
-      // Handle fund cash recovery
-      if (tx.fundId && funds && funds.length > 0) {
-        const selectedFund = funds.find(f => f.id === tx.fundId);
-        if (selectedFund) {
-          let fundCash = parseFloat(selectedFund.cashBalance) || 0;
-          let newCash = fundCash;
-          const totalInfo = Math.abs(parseFloat(tx.totalVND) || 0);
-          
-          if (tx.transactionType === 'Mua') {
-            // Refund cash because an expense was deleted
-            newCash += totalInfo;
-          } else if (tx.transactionType === 'Bán' || tx.transactionType === 'Nạp tiền') {
-            // Deduct cash because incoming money was deleted
-            newCash -= totalInfo;
-          }
-          
-          if (newCash !== fundCash) {
-            await apiUpdateFund(selectedFund.id, { cashBalance: Math.max(0, newCash) });
-          }
-        }
-      }
-
       if (onUpdate) onUpdate();
     } catch (err) {
       console.error('Error deleting:', err);

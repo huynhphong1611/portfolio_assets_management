@@ -1,7 +1,13 @@
 /**
- * Portfolio Calculator Engine v2
- * 
- * Holdings, Net Worth, Rebalance, P&L, Fund calculations, Snapshot generation
+ * Portfolio Calculator Engine v3
+ *
+ * Holdings, Net Worth, Rebalance, P&L, Snapshot generation
+ * Capital accounting model:
+ *   - Nạp tiền  → VNĐ_CASH.qty ↑, VNĐ_CASH.totalCost ↑ (net capital in)
+ *   - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
+ *   - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; totalCost unchanged)
+ *   - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; totalCost unchanged)
+ * Total P&L = total portfolio value (assets + cash) − net capital deposited
  */
 
 // ============================================================
@@ -41,66 +47,96 @@ export function calculateHoldings(transactions) {
 
   const holdingsMap = {};
 
+  /** Ensure VNĐ_CASH entry exists (lazy init). */
+  const ensureCash = (storage = '') => {
+    if (!holdingsMap['VNĐ_CASH']) {
+      holdingsMap['VNĐ_CASH'] = {
+        ticker: 'VNĐ',
+        assetClass: 'Tiền mặt VNĐ',
+        qty: 0,           // actual liquid balance — changes on all tx types
+        totalCost: 0,     // net capital deposited  — only changes on Nạp / Rút
+        avgCost: 1,
+        storage: storage || '',
+        currency: 'VNĐ',
+      };
+    }
+  };
+
   for (const tx of sorted) {
-    const { ticker, transactionType, assetClass, quantity, totalVND, storage, currency, exchangeRate, fundId, fundName } = tx;
-    
+    const { ticker, transactionType, assetClass, quantity, totalVND, storage, currency } = tx;
+    const amount = Math.abs(totalVND || quantity || 0);
+
+    // ── Cash-flow transactions (no ticker or ticker = 'VNĐ') ──
     if (!ticker || ticker === 'VNĐ') {
-      if (assetClass === 'Tiền mặt VNĐ' && transactionType === 'Nạp tiền') {
-        if (!holdingsMap['VNĐ_CASH']) {
-          holdingsMap['VNĐ_CASH'] = {
-            ticker: 'VNĐ', assetClass: 'Tiền mặt VNĐ', qty: 0, totalCost: 0, avgCost: 1,
-            storage: storage || '', currency: 'VNĐ', fundId: fundId || null, fundName: fundName || null
-          };
+      if (assetClass === 'Tiền mặt VNĐ') {
+        if (transactionType === 'Nạp tiền') {
+          ensureCash(storage);
+          holdingsMap['VNĐ_CASH'].qty       += amount;
+          holdingsMap['VNĐ_CASH'].totalCost += amount; // FIX: capital in
+        } else if (transactionType === 'Rút tiền') {
+          ensureCash(storage);
+          holdingsMap['VNĐ_CASH'].qty       -= amount;
+          holdingsMap['VNĐ_CASH'].totalCost -= amount; // capital out
         }
-        holdingsMap['VNĐ_CASH'].qty += Math.abs(quantity || totalVND || 0);
-        holdingsMap['VNĐ_CASH'].totalCost = holdingsMap['VNĐ_CASH'].qty;
       }
       continue;
     }
 
+    // ── Asset transactions ──
     const key = ticker;
-
     if (!holdingsMap[key]) {
       holdingsMap[key] = {
-        ticker, assetClass: assetClass || 'Khác', qty: 0, totalCost: 0, avgCost: 0,
-        storage: storage || '', currency: currency || 'VNĐ',
-        fundId: fundId || null, fundName: fundName || null
+        ticker,
+        assetClass: assetClass || 'Khác',
+        qty: 0,
+        totalCost: 0,
+        avgCost: 0,
+        storage: storage || '',
+        currency: currency || 'VNĐ',
       };
     }
 
     const entry = holdingsMap[key];
-    const qty = Math.abs(quantity || 0);
+    const qty  = Math.abs(quantity || 0);
     const cost = Math.abs(totalVND || 0);
 
     if (transactionType === 'Mua') {
       entry.totalCost += cost;
-      entry.qty += qty;
-      entry.avgCost = entry.qty > 0 ? entry.totalCost / entry.qty : 0;
+      entry.qty       += qty;
+      entry.avgCost    = entry.qty > 0 ? entry.totalCost / entry.qty : 0;
       if (storage) entry.storage = storage;
-      if (fundId) { entry.fundId = fundId; entry.fundName = fundName; }
+
+      // Cash decreases (spent), but net capital is unchanged
+      if (holdingsMap['VNĐ_CASH']) {
+        holdingsMap['VNĐ_CASH'].qty = Math.max(0, holdingsMap['VNĐ_CASH'].qty - cost);
+        // FIX: do NOT touch .totalCost here
+      }
     } else if (transactionType === 'Bán') {
       const soldCostBasis = entry.avgCost * qty;
-      entry.qty -= qty;
+      entry.qty       -= qty;
       entry.totalCost -= soldCostBasis;
       if (entry.qty <= 0.0001) {
         entry.qty = 0; entry.totalCost = 0; entry.avgCost = 0;
+      } else {
+        entry.avgCost = entry.totalCost / entry.qty;
       }
-    }
 
-    if (holdingsMap['VNĐ_CASH']) {
-      if (transactionType === 'Mua') {
-        holdingsMap['VNĐ_CASH'].qty -= cost;
-        holdingsMap['VNĐ_CASH'].totalCost = Math.max(0, holdingsMap['VNĐ_CASH'].qty);
-      } else if (transactionType === 'Bán') {
+      // Cash increases (proceeds returned), but net capital is unchanged
+      if (holdingsMap['VNĐ_CASH']) {
         holdingsMap['VNĐ_CASH'].qty += cost;
-        holdingsMap['VNĐ_CASH'].totalCost = holdingsMap['VNĐ_CASH'].qty;
+        // FIX: do NOT touch .totalCost here
       }
     }
   }
 
+  // Keep VNĐ_CASH even when .qty is zero, as long as net capital > 0
+  // (user may have deployed all cash into assets)
   return Object.values(holdingsMap)
-    .filter(h => h.qty > 0.0001)
-    .map(h => ({ ...h, avgCost: h.qty > 0 ? h.totalCost / h.qty : 0 }));
+    .filter(h => h.qty > 0.0001 || (h.ticker === 'VNĐ' && h.totalCost > 0))
+    .map(h => ({
+      ...h,
+      avgCost: h.ticker === 'VNĐ' ? 1 : (h.qty > 0 ? h.totalCost / h.qty : 0),
+    }));
 }
 
 // ============================================================
@@ -138,8 +174,7 @@ export function calculatePortfolio(holdings, marketPrices = {}) {
     return {
       ticker: h.ticker, assetClass: h.assetClass, qty: h.qty, avgCost: h.avgCost,
       marketPrice, totalCost: h.totalCost, actualValue, pnl, pnlPercent,
-      storage: h.storage, currency: h.currency,
-      fundId: h.fundId, fundName: h.fundName
+      storage: h.storage, currency: h.currency
     };
   });
 }
@@ -225,50 +260,50 @@ export function calculateRebalance(portfolio, targetWeights = {}) {
 // CALCULATE TOTAL P&L
 // ============================================================
 
-export function calculateTotalPnL(portfolio, funds = []) {
-  const investItems = portfolio.filter(p => p.assetClass !== 'Tiền mặt VNĐ');
-  let totalValue = investItems.reduce((sum, p) => sum + p.actualValue, 0);
-  let totalCost = investItems.reduce((sum, p) => sum + p.totalCost, 0);
+export function calculateTotalPnL(portfolio, transactions = []) {
+  /**
+   * True P&L = (total current value of ALL holdings incl. cash)
+   *           - (net capital deposited = sum of Nạp tiền - Rút tiền)
+   *
+   * VNĐ_CASH.totalCost holds the definitive net-capital figure once
+   * any deposit has been recorded. For legacy/import-only portfolios
+   * (no Nạp tiền rows) we fall back to 'transactions' then to cost-basis.
+   */
+  // 1. Total current portfolio value (assets + liquid cash)
+  const totalValue = portfolio.reduce((sum, p) => sum + p.actualValue, 0);
 
-  // Add fund cash balances to total value and total cost
-  const totalFundCash = funds.reduce((sum, f) => sum + (parseFloat(f.cashBalance) || 0), 0);
-  totalValue += totalFundCash;
-  totalCost += totalFundCash;
+  // 2. Net capital — prefer VNĐ_CASH.totalCost (most accurate)
+  const cashItem   = portfolio.find(p => p.ticker === 'VNĐ');
+  let netCapital;
 
-  const totalPnL = totalValue - totalCost;
-  const totalPnLPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
-  return { totalValue, totalCost, totalPnL, totalPnLPercent, totalFundCash };
+  if (cashItem && cashItem.totalCost > 0) {
+    // Tracked deposit/withdrawal history: totalCost = net capital
+    netCapital = cashItem.totalCost;
+  } else if (transactions.length > 0) {
+    // Fallback: derive from transaction log
+    netCapital = transactions.reduce((sum, t) => {
+      const amt = Math.abs(t.totalVND || 0);
+      if (t.transactionType === 'Nạp tiền') return sum + amt;
+      if (t.transactionType === 'Rút tiền') return sum - amt;
+      return sum;
+    }, 0);
+  } else {
+    // Last resort (import without deposits): use cost basis of all positions
+    netCapital = portfolio.reduce((sum, p) => sum + p.totalCost, 0);
+  }
+
+  const totalPnL        = totalValue - netCapital;
+  const totalPnLPercent = netCapital > 0 ? (totalPnL / netCapital) * 100 : 0;
+  return { totalValue, totalCost: netCapital, totalPnL, totalPnLPercent };
 }
 
 // ============================================================
 // GENERATE DAILY SNAPSHOT
 // ============================================================
 
-export function generateSnapshot(portfolio, externalAssets, liabilities, funds) {
+export function generateSnapshot(portfolio, externalAssets, liabilities) {
   const pnl = calculateTotalPnL(portfolio);
   const nw = calculateNetWorth(portfolio, externalAssets, liabilities);
-
-  // Per-fund breakdown
-  const fundsBreakdown = {};
-  if (funds && funds.length > 0) {
-    funds.forEach(fund => {
-      const fundHoldings = portfolio.filter(p =>
-        p.assetClass === fund.assetClass ||
-        (fund.assetClass === 'Tiền mặt' && (p.assetClass === 'Tiền mặt VNĐ' || p.assetClass === 'Tiền mặt USD'))
-      );
-      const holdingsValue = fundHoldings.reduce((s, h) => s + h.actualValue, 0);
-      const holdingsCost = fundHoldings.reduce((s, h) => s + h.totalCost, 0);
-      const cash = parseFloat(fund.cashBalance) || 0;
-
-      fundsBreakdown[fund.name] = {
-        value: holdingsValue + cash,
-        holdingsValue,
-        cash,
-        cost: holdingsCost,
-        pnl: holdingsValue - holdingsCost,
-      };
-    });
-  }
 
   return {
     totalAssets: nw.totalAssets,
@@ -278,7 +313,6 @@ export function generateSnapshot(portfolio, externalAssets, liabilities, funds) 
     portfolioCost: pnl.totalCost,
     portfolioPnL: pnl.totalPnL,
     portfolioPnLPercent: pnl.totalPnLPercent,
-    funds: fundsBreakdown,
   };
 }
 
