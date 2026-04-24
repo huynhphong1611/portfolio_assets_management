@@ -300,6 +300,11 @@ def calculate_total_pnl(portfolio: list, transactions: list = None) -> dict:
     Calculate true portfolio P&L using capital-basis accounting.
     P&L = total current value (all assets + cash) − net capital deposited.
     Mirrors JS calculateTotalPnL() v3.
+
+    Priority for net-capital:
+      1. Transaction log (Nạp tiền / Rút tiền rows) — authoritative
+      2. VNĐ_CASH.totalCost > 0  — for accounts with no cash-flow rows
+      3. Sum of cost-basis       — last resort (import-only portfolios)
     """
     if transactions is None:
         transactions = []
@@ -307,23 +312,30 @@ def calculate_total_pnl(portfolio: list, transactions: list = None) -> dict:
     # 1. Total current value = ALL portfolio items (assets + cash)
     total_value = sum(p.get("actualValue", 0) for p in portfolio)
 
-    # 2. Net capital — prefer VNĐ_CASH.totalCost (most accurate)
+    # 2. Derive net capital from transaction log (always most reliable)
+    tx_net_capital = 0.0
+    has_cash_flow_tx = False
+    for t in transactions:
+        amt = abs(t.get("totalVND", 0) or 0)
+        if t.get("transactionType") == "Nạp tiền":
+            tx_net_capital += amt
+            has_cash_flow_tx = True
+        elif t.get("transactionType") == "Rút tiền":
+            tx_net_capital -= amt
+            has_cash_flow_tx = True
+
+    # 3. Choose best source
     cash_item = next((p for p in portfolio if p.get("ticker") == "VNĐ"), None)
 
-    if cash_item and cash_item.get("totalCost", 0) > 0:
+    if has_cash_flow_tx:
+        net_capital = tx_net_capital
+    elif cash_item and cash_item.get("totalCost", 0) > 0:
         net_capital = cash_item["totalCost"]
-    elif transactions:
-        # Fallback: derive from transaction log
-        net_capital = 0.0
-        for t in transactions:
-            amt = abs(t.get("totalVND", 0) or 0)
-            if t.get("transactionType") == "Nạp tiền":
-                net_capital += amt
-            elif t.get("transactionType") == "Rút tiền":
-                net_capital -= amt
     else:
-        # Last resort: sum of cost basis
         net_capital = sum(p.get("totalCost", 0) for p in portfolio)
+
+    # Guard: net_capital should never be negative
+    net_capital = max(0.0, net_capital)
 
     total_pnl = total_value - net_capital
     total_pnl_percent = (total_pnl / net_capital * 100) if net_capital > 0 else 0

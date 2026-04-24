@@ -110,7 +110,7 @@ export default function App() {
     // Recalculate for snapshot
     const h = calculateHoldings(transactions);
     const p = calculatePortfolio(h, marketPrices);
-    const snap = generateSnapshot(p, externalAssets, liabilities);
+    const snap = generateSnapshot(p, externalAssets, liabilities, transactions);
     apiSaveSnapshot({ date: today, ...snap }).then(() => {
       console.log('📸 Auto-snapshot saved for', today);
       // Re-fetch snapshots
@@ -178,7 +178,7 @@ export default function App() {
   const handleManualSnapshot = async () => {
     const today = new Date().toISOString().slice(0, 10);
     try {
-      const snap = generateSnapshot(portfolio, externalAssets, liabilities);
+      const snap = generateSnapshot(portfolio, externalAssets, liabilities, transactions);
       await apiSaveSnapshot({ date: today, ...snap });
       alert('📸 Snapshot đã được lưu cho ngày ' + today);
       refreshData();
@@ -197,7 +197,7 @@ export default function App() {
       // 2. Compute inline
       const h = calculateHoldings(txs || []);
       const p = calculatePortfolio(h, mktPrices || {});
-      const snap = generateSnapshot(p, extAssets || [], debts || []);
+      const snap = generateSnapshot(p, extAssets || [], debts || [], txs || []);
       // 3. Save snapshot for today
       const today = new Date().toISOString().slice(0, 10);
       await apiSaveSnapshot({ date: today, ...snap });

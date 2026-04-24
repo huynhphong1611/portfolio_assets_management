@@ -129,10 +129,9 @@ export function calculateHoldings(transactions) {
     }
   }
 
-  // Keep VNĐ_CASH even when .qty is zero, as long as net capital > 0
-  // (user may have deployed all cash into assets)
+  // Keep VNĐ_CASH when qty > 0 (has cash) OR net capital > 0 (tracks deposits)
   return Object.values(holdingsMap)
-    .filter(h => h.qty > 0.0001 || (h.ticker === 'VNĐ' && h.totalCost > 0))
+    .filter(h => h.qty > 0.0001 || (h.ticker === 'VNĐ' && (h.totalCost > 0 || h.qty > 0.0001)))
     .map(h => ({
       ...h,
       avgCost: h.ticker === 'VNĐ' ? 1 : (h.qty > 0 ? h.totalCost / h.qty : 0),
@@ -265,32 +264,44 @@ export function calculateTotalPnL(portfolio, transactions = []) {
    * True P&L = (total current value of ALL holdings incl. cash)
    *           - (net capital deposited = sum of Nạp tiền - Rút tiền)
    *
-   * VNĐ_CASH.totalCost holds the definitive net-capital figure once
-   * any deposit has been recorded. For legacy/import-only portfolios
-   * (no Nạp tiền rows) we fall back to 'transactions' then to cost-basis.
+   * Priority:
+   *   1. VNĐ_CASH.totalCost > 0  → most accurate (deposit-tracking accounts)
+   *   2. Transaction log           → fallback for any account with Nạp tiền rows
+   *   3. Sum of cost-basis         → last resort (import-only, no deposit rows)
+   *
+   * NOTE: We deliberately ignore cashItem.totalCost when it is <= 0 to avoid
+   * displaying a negative "Tổng vốn đã đầu tư" after a user closes all
+   * positions and the cash register has not been reconciled.
    */
   // 1. Total current portfolio value (assets + liquid cash)
   const totalValue = portfolio.reduce((sum, p) => sum + p.actualValue, 0);
 
-  // 2. Net capital — prefer VNĐ_CASH.totalCost (most accurate)
-  const cashItem   = portfolio.find(p => p.ticker === 'VNĐ');
+  // 2. Derive net capital from transaction log first (always most reliable)
+  let txNetCapital = 0;
+  let hasCashFlowTx = false;
+  for (const t of transactions) {
+    const amt = Math.abs(t.totalVND || 0);
+    if (t.transactionType === 'Nạp tiền') { txNetCapital += amt; hasCashFlowTx = true; }
+    else if (t.transactionType === 'Rút tiền') { txNetCapital -= amt; hasCashFlowTx = true; }
+  }
+
+  // 3. Choose the best net-capital source
+  const cashItem = portfolio.find(p => p.ticker === 'VNĐ');
   let netCapital;
 
-  if (cashItem && cashItem.totalCost > 0) {
-    // Tracked deposit/withdrawal history: totalCost = net capital
+  if (hasCashFlowTx) {
+    // Transaction log is authoritative when deposit/withdrawal rows exist
+    netCapital = txNetCapital;
+  } else if (cashItem && cashItem.totalCost > 0) {
+    // Accounts without Nạp/Rút but with a tracked cash item
     netCapital = cashItem.totalCost;
-  } else if (transactions.length > 0) {
-    // Fallback: derive from transaction log
-    netCapital = transactions.reduce((sum, t) => {
-      const amt = Math.abs(t.totalVND || 0);
-      if (t.transactionType === 'Nạp tiền') return sum + amt;
-      if (t.transactionType === 'Rút tiền') return sum - amt;
-      return sum;
-    }, 0);
   } else {
     // Last resort (import without deposits): use cost basis of all positions
     netCapital = portfolio.reduce((sum, p) => sum + p.totalCost, 0);
   }
+
+  // Guard: netCapital should never be negative (would mean more Rút than Nạp)
+  netCapital = Math.max(0, netCapital);
 
   const totalPnL        = totalValue - netCapital;
   const totalPnLPercent = netCapital > 0 ? (totalPnL / netCapital) * 100 : 0;
@@ -301,8 +312,9 @@ export function calculateTotalPnL(portfolio, transactions = []) {
 // GENERATE DAILY SNAPSHOT
 // ============================================================
 
-export function generateSnapshot(portfolio, externalAssets, liabilities) {
-  const pnl = calculateTotalPnL(portfolio);
+export function generateSnapshot(portfolio, externalAssets, liabilities, transactions = []) {
+  // Pass transactions so P&L % is always computed against net capital, not cost-basis
+  const pnl = calculateTotalPnL(portfolio, transactions);
   const nw = calculateNetWorth(portfolio, externalAssets, liabilities);
 
   return {
