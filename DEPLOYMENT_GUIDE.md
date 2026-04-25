@@ -274,17 +274,42 @@ firebase deploy --only hosting
 ⏳ **Thời gian:** Khoảng 30 giây.
 
 #### 👉 Kịch bản B: Chỉ sửa Backend (Python / API)
-Bạn viết thêm API rút tiền, cập nhật giá Coin mới (không ảnh hưởng màn hình).
+
+Khi bạn cập nhật code cho Backend (thêm API mới, sửa logic), tuỳ thuộc vào việc bạn có thay đổi **biến môi trường** hay không mà chọn lệnh phù hợp:
+
+**Cách 1: Deploy giữ nguyên biến môi trường cũ (Khuyên dùng khi chỉ sửa code)**
+Hệ thống sẽ tự động dùng lại toàn bộ cài đặt biến môi trường từ lần deploy trước đó.
+```bash
+cd backend
+gcloud run deploy fastapi-backend \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated
+```
+
+**Cách 2: Deploy và Thêm/Cập nhật biến môi trường (Giữ lại các biến khác)**
+Dùng cờ `--update-env-vars`. Hệ thống sẽ đè giá trị biến mới lên biến cũ trùng tên, hoặc thêm biến mới, và vẫn **giữ nguyên** các biến không được nhắc đến.
 ```bash
 cd backend
 gcloud run deploy fastapi-backend \
   --source . \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars="DEPLOYMENT_MODE=serverless,JWT_SECRET=<Mã_của_bạn_nằm_ở_file_.env>,VNSTOCK_API_ENABLED=true,VNSTOCK_API_KEY=<Mã_của_bạn>,COINGECKO_API_KEY=<Mã_của_bạn>"
+  --update-env-vars="NEW_VAR=true,COINGECKO_API_KEY=<Mã_mới>"
 ```
-*Tip: Bạn có thể bỏ qua dòng `--set-env-vars` nếu bạn đã quản lý Token bằng Google Secret Manager hoặc cấu hình trực tiếp trên Web Console.*
-⏳ **Thời gian:** Khoảng 2-3 phút để Build Container mới.
+
+**Cách 3: Deploy và Cài đặt lại toàn bộ biến môi trường từ đầu (Xoá hết biến cũ)**
+Dùng cờ `--set-env-vars`. Lệnh này sẽ **XOÁ SẠCH** các biến cũ hiện có và CHỈ lưu những biến được khai báo trong lệnh này. Dùng khi cấu trúc biến môi trường thay đổi nhiều.
+```bash
+cd backend
+gcloud run deploy fastapi-backend \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-env-vars="DEPLOYMENT_MODE=serverless,JWT_SECRET=<Mã_của_bạn>,VNSTOCK_API_ENABLED=true,VNSTOCK_API_KEY=<Mã_của_bạn>,COINGECKO_API_KEY=<Mã_của_bạn>"
+```
+
+⏳ **Thời gian:** Khoảng 2-4 phút để Build Container mới.
 
 #### 👉 Kịch bản C: Sửa cả hai
 Làm lần lượt Kịch bản B (Deploy Backend trước) rồi làm Kịch bản A (Deploy Frontend sau).
