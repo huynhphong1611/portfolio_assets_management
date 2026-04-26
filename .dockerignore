@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+node_modules
+dist
+build
+coverage
+*.log
+logs/
+firebase-service-account.json
+credentials.json
+.DS_Store

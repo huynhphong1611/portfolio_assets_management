@@ -104,7 +104,8 @@ def daily_price_snapshot_job():
     ticker_config = fs.get_supported_tickers()
     all_tickers = list(set(
         ticker_config.get("stocks", []) +
-        ticker_config.get("crypto", [])
+        ticker_config.get("crypto", []) +
+        ticker_config.get("funds", [])
     ))
 
     if not all_tickers:
@@ -129,6 +130,7 @@ def daily_price_snapshot_job():
     ticker_type_map = {}
     for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
     for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
+    for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
 
     # 2. Batch fetch all prices
     price_results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=today, ticker_type_map=ticker_type_map)

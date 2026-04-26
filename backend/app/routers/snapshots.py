@@ -79,13 +79,20 @@ async def backfill_snapshots(
     all_external      = fs.get_external_assets(uid, utype)
     all_liabilities   = fs.get_liabilities(uid, utype)
 
-    # Current market prices as ultimate fallback
-    current_market_prices = fs.get_market_prices()
+    from datetime import timedelta
+    # Pre-fetch rolling prices for the last 7 days before d_start
+    rolling_prices = {}
+    for i in range(7, 0, -1):
+        prev_date = (d_start - timedelta(days=i)).isoformat()
+        prev_doc = fs.get_system_daily_prices(prev_date)
+        if prev_doc and prev_doc.get("prices"):
+            for t, p in prev_doc["prices"].items():
+                rolling_prices[t] = {"price": p, "date": prev_date}
 
     saved_dates  = []
     skipped_dates = []
 
-    from datetime import timedelta
+
 
     cur = d_start
     while cur <= d_end:
@@ -183,11 +190,28 @@ async def backfill_snapshots(
                 else:
                     market_prices[ticker] = {"price": price_vnd}
 
-            # Fallback to current market prices for missing ones
-            for ticker, current_price in current_market_prices.items():
-                if ticker not in market_prices:
-                    market_prices[ticker] = current_price
-                    logger.warning(f"  Missing API price for {ticker} at {date_str}, fallback to current")
+        # Update rolling prices with today's found prices
+        for ticker, mdata in market_prices.items():
+            rolling_prices[ticker] = {"price": mdata["price"], "date": date_str}
+
+        # Fallback to rolling prices (up to 7 days) for missing tickers in user's holdings
+        for h in holdings:
+            ticker = h.get("ticker")
+            if ticker and ticker not in market_prices and ticker != "VNĐ":
+                last_known = rolling_prices.get(ticker)
+                if last_known:
+                    last_date_obj = datetime.strptime(last_known["date"], "%Y-%m-%d").date()
+                    if (cur - last_date_obj).days <= 7:
+                        pv = last_known["price"]
+                        if ticker in {"USDT", "USDC"}:
+                            market_prices[ticker] = {"price": pv, "exchangeRate": pv}
+                        else:
+                            market_prices[ticker] = {"price": pv}
+                        logger.info(f"  Fallback {ticker} at {date_str} to price from {last_known['date']}")
+                    else:
+                        logger.warning(f"  {ticker} at {date_str} has no price in last 7 days, fallback to avgCost")
+                else:
+                    logger.warning(f"  {ticker} at {date_str} has no price history, fallback to avgCost")
 
         # 3. Calculate portfolio as of that date
         portfolio = ps.calculate_portfolio(holdings, market_prices)

@@ -16,9 +16,9 @@ service cloud.firestore {
                          && request.auth.uid == userId;
     }
 
-    // ─── MARKET PRICES (Public read-only) ───
+    // ─── MARKET PRICES (Authenticated Read-Only) ───
     match /marketPrices/{ticker} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if false;
     }
 

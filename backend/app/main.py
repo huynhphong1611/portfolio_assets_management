@@ -58,7 +58,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error on {request.method} {request.url}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"success": False, "error": "Internal server error", "detail": str(exc)},
+        content={"success": False, "error": "Internal server error", "detail": "Đã xảy ra lỗi hệ thống cục bộ."},
     )
 
 # ── Routers ──
