@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## [2026-05-02]
+### Changed
+- **workflows**: Updated `pre_commit_scan.md` to be more structured and instructed AI to adopt `SecurityOps_Agent` persona. [AI: Gemini 3.1 Pro (High)]
+
 ### Fixed
 - **price_service**: Fixed Bitcoin (USD) benchmark data fetching. Added fallback to 365 days if `days=max` returns 401/403 (Free tier limit). [AI: Gemini 3 Flash]
 - **charts**: Resolved overlapping x-axis labels in charts.
