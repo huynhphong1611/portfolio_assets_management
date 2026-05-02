@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - **charts**: Resolved overlapping x-axis labels in charts.
 
 ### Added
+- **docs**: Created a comprehensive project Wiki in the `wiki/` directory covering architecture, APIs, deployment, and features. [AI: Gemini 3.1 Pro (Low)]
+- **agents**: Added `repo_wiki` AI agent skill for managing GitHub/GitLab repository wikis. [AI: Gemini 3.1 Pro (Low)]
 - **charts**: Added 100% stacked area chart and user-rebased 'All' time range.
 
 ## [2026-04-26]
