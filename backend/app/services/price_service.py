@@ -501,12 +501,20 @@ def get_benchmark_history(days: int = 90) -> dict:
     # 2. Fetch BTC (USD)
     try:
         import requests
-        url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={days}"
+        
+        cg_days = "max" if days > 365 else str(days)
+        url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days={cg_days}"
         headers = {}
         if settings.COINGECKO_API_KEY:
             headers["x-cg-demo-api-key"] = settings.COINGECKO_API_KEY
             
         resp = requests.get(url, headers=headers)
+        
+        if resp.status_code in (401, 403, 400) and cg_days == "max":
+            logger.warning(f"CoinGecko API rejected days=max (status {resp.status_code}). Falling back to days=365.")
+            url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365"
+            resp = requests.get(url, headers=headers)
+            
         if resp.status_code == 200:
             data = resp.json().get("prices", [])
             daily_btc = {}
@@ -517,6 +525,8 @@ def get_benchmark_history(days: int = 90) -> dict:
                 
             for dt_str in sorted(daily_btc.keys()):
                 results["BTC"].append({"date": dt_str, "close": float(daily_btc[dt_str])})
+        else:
+            logger.error(f"CoinGecko API error for BTC history: {resp.status_code} - {resp.text}")
     except Exception as e:
         logger.error(f"Error fetching BTC history: {e}")
         
