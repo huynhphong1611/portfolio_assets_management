@@ -98,6 +98,7 @@ class SnapshotCreate(BaseModel):
     portfolioCost: float = 0
     portfolioPnL: float = 0
     portfolioPnLPercent: float = 0
+    assetClassBreakdown: Optional[dict] = None  # {"Cổ phiếu": 1000000, ...}
 
 
 # ── Settings ──

@@ -317,6 +317,13 @@ export function generateSnapshot(portfolio, externalAssets, liabilities, transac
   const pnl = calculateTotalPnL(portfolio, transactions);
   const nw = calculateNetWorth(portfolio, externalAssets, liabilities);
 
+  // Asset class breakdown for historical allocation chart
+  const classMap = {};
+  for (const item of portfolio) {
+    const cls = item.assetClass || 'Khác';
+    classMap[cls] = (classMap[cls] || 0) + item.actualValue;
+  }
+
   return {
     totalAssets: nw.totalAssets,
     totalLiabilities: nw.totalLiabilities,
@@ -325,6 +332,7 @@ export function generateSnapshot(portfolio, externalAssets, liabilities, transac
     portfolioCost: pnl.totalCost,
     portfolioPnL: pnl.totalPnL,
     portfolioPnLPercent: pnl.totalPnLPercent,
+    assetClassBreakdown: classMap,
   };
 }
 

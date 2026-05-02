@@ -2646,6 +2646,19 @@ body {
   font-size: 0.85rem;
 }
 
+/* Stacked Area Chart */
+.stacked-area-path {
+  transition: opacity var(--transition-fast);
+}
+
+.stacked-area-chart-container:hover .stacked-area-path {
+  opacity: 0.75;
+}
+
+.stacked-area-chart-container .stacked-area-path:hover {
+  opacity: 1;
+}
+
 
 /* ============================================================
    34. PORTFOLIO TABLE HEADER

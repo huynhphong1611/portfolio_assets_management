@@ -357,6 +357,12 @@ def generate_snapshot(portfolio: list, external_assets: list,
     pnl = calculate_total_pnl(portfolio, transactions or [])
     nw  = calculate_net_worth(portfolio, external_assets, liabilities)
 
+    # Asset class breakdown for historical allocation chart
+    class_map = {}
+    for item in portfolio:
+        cls = item.get("assetClass", "Khác")
+        class_map[cls] = class_map.get(cls, 0) + item.get("actualValue", 0)
+
     return {
         "totalAssets": nw["totalAssets"],
         "totalLiabilities": nw["totalLiabilities"],
@@ -365,4 +371,5 @@ def generate_snapshot(portfolio: list, external_assets: list,
         "portfolioCost": pnl["totalCost"],
         "portfolioPnL": pnl["totalPnL"],
         "portfolioPnLPercent": pnl["totalPnLPercent"],
+        "assetClassBreakdown": class_map,
     }

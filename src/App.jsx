@@ -31,6 +31,7 @@ import HistoricalSnapshotModal from './components/HistoricalSnapshotModal.jsx';
 import SystemPricesBoard from './components/SystemPricesBoard.jsx';
 import LineChart from './components/charts/LineChart.jsx';
 import CumulativePerformanceChart from './components/CumulativePerformanceChart.jsx';
+import StackedAreaChart from './components/charts/StackedAreaChart.jsx';
 
 // ============================================================
 // MAIN APP
@@ -482,6 +483,14 @@ export default function App() {
                       <h3 className="card-title" style={{ margin: 0 }}>Phân bổ theo loại tài sản</h3>
                     </div>
                     <AssetAllocationChart data={allocationChartData} size={240} />
+                  </div>
+                )}
+
+                {/* Asset Allocation Over Time — 100% Stacked Area */}
+                {snapshots.length > 0 && (
+                  <div className="glass-card section-card">
+                    <h3 className="card-title">Phân bổ tài sản theo thời gian (%)</h3>
+                    <StackedAreaChart snapshots={snapshots} height={300} />
                   </div>
                 )}
 

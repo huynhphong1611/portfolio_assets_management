@@ -11,7 +11,7 @@ export default function CumulativePerformanceChart({ snapshots = [] }) {
     async function fetchBenchmarks() {
       setLoading(true);
       try {
-        const res = await apiGetBenchmarkHistory(365);
+        const res = await apiGetBenchmarkHistory(3650);
         if (res) setBenchmarks(res);
       } catch (err) {
         console.error('Lỗi tải benchmark:', err);
@@ -25,8 +25,13 @@ export default function CumulativePerformanceChart({ snapshots = [] }) {
   const chartDatasets = useMemo(() => {
     // Determine start date based on range
     const now = new Date();
-    const startDate = new Date(now.getTime() - range * 24 * 60 * 60 * 1000);
-    const startDateStr = startDate.toISOString().slice(0, 10);
+    // "Tất cả" → start from the user's first snapshot (= first transaction date)
+    const firstSnapshotDate = snapshots.length > 0
+      ? [...snapshots].sort((a, b) => a.date.localeCompare(b.date))[0].date
+      : now.toISOString().slice(0, 10);
+    const startDateStr = range === 'all'
+      ? firstSnapshotDate
+      : new Date(now.getTime() - range * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     // Filter data >= startDateStr
     const validSnapshots = snapshots
@@ -131,7 +136,8 @@ export default function CumulativePerformanceChart({ snapshots = [] }) {
              { label: '1 Tuần', val: 7 },
              { label: '1 Tháng', val: 30 },
              { label: '3 Tháng', val: 90 },
-             { label: '1 Năm', val: 365 }
+             { label: '1 Năm', val: 365 },
+             { label: 'Tất cả', val: 'all' }
            ].map(r => (
             <button 
               key={r.val} 
