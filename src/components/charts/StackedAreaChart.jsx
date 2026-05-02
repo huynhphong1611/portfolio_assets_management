@@ -131,12 +131,14 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
 
     // X-axis labels
     const step = Math.max(1, Math.floor(dates.length / 7));
-    const xLabels = dates
-      .filter((_, i) => i % step === 0 || i === dates.length - 1)
-      .map(label => ({
-        label: formatDateLabel(label),
-        x: xScale(dates.indexOf(label)),
-      }));
+    const xLabels = [];
+    dates.forEach((label, i) => {
+      if (i === 0 || i === dates.length - 1) {
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+      } else if (i % step === 0 && (dates.length - 1 - i) >= step * 0.6) {
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+      }
+    });
 
     return { dates, orderedClasses, stackedData, areaPaths, yTicks, xLabels, xScale };
   }, [snapshots, chartW, chartH]);

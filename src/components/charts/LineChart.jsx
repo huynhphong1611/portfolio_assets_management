@@ -45,11 +45,14 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
 
     // X-axis labels (max 8)
     const step = Math.max(1, Math.floor(allX.length / 7));
-    const xLabels = allX.filter((_, i) => i % step === 0 || i === allX.length - 1)
-      .map((label, i, arr) => ({
-        label: formatDateLabel(label),
-        x: xScale(allX.indexOf(label))
-      }));
+    const xLabels = [];
+    allX.forEach((label, i) => {
+      if (i === 0 || i === allX.length - 1) {
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+      } else if (i % step === 0 && (allX.length - 1 - i) >= step * 0.6) {
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+      }
+    });
 
     // Build paths
     const paths = datasets.map(ds => {
