@@ -38,10 +38,13 @@ class TransactionCreate(BaseModel):
     date: str
     transactionType: Literal["Mua", "Bán", "Nạp tiền", "Rút tiền"]
     assetClass: Literal["Tiền mặt VNĐ", "Tiền mặt USD", "Trái phiếu", "Cổ phiếu", "Tài sản mã hóa", "Vàng"]
-    ticker: str = Field(..., min_length=1, max_length=20, pattern=r"^[A-Za-z0-9À-ỹ\-\_]+$")
-    quantity: float = Field(..., gt=0)
+    # Allow empty ticker for cash-only tx (Rút tiền / Nạp tiền)
+    ticker: str = Field(default="", max_length=20, pattern=r"^[A-Za-z0-9À-ỹ\-\_]*$")
+    # Negative quantity is valid for Bán transactions (frontend sends -abs(qty))
+    quantity: float = Field(..., ne=0)
     unitPrice: float = Field(..., ge=0)
-    currency: Literal["VNĐ", "USDT", "USD"] = "VNĐ"
+    # USDC added alongside USDT/USD
+    currency: Literal["VNĐ", "USDT", "USDC", "USD"] = "VNĐ"
     exchangeRate: float = Field(default=1, gt=0)
     costBasisValue: Optional[float] = 0
     totalVND: float
