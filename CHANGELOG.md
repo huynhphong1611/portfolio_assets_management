@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-05-03]
+### Fixed
+- **api**: Fixed 422 Unprocessable Entity error when selling USDC or performing cash transactions. Updated schema to support USDC currency, negative quantities for sales, and optional tickers for deposits/withdrawals. [AI: Gemini 3 Flash]
+
 ## [2026-05-02]
 ### Changed
 - **workflows**: Updated `pre_commit_scan.md` to be more structured and instructed AI to adopt `SecurityOps_Agent` persona. [AI: Gemini 3.1 Pro (High)]
