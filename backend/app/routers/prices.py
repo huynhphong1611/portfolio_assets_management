@@ -73,9 +73,14 @@ async def save_market_prices(req: MarketPricesUpdate, user: dict = Depends(get_c
 
 
 @router.get("/daily", response_model=APIResponse)
-async def get_daily_prices():
-    """Get system daily price entries (admin-controlled, global)."""
-    data = fs.get_system_daily_prices_history(30)
+async def get_daily_prices(
+    limit: int = Query(30, ge=1, le=1000, description="Number of most recent daily entries"),
+):
+    """Get system daily price entries (admin-controlled, global), newest first.
+
+    Used by the All Securities / Exchange Rates views to draw price history.
+    """
+    data = fs.get_system_daily_prices_history(limit)
     return APIResponse(data=data)
 
 

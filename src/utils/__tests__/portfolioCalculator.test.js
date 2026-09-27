@@ -60,9 +60,8 @@ describe('portfolioCalculator logic', () => {
       expect(fue.actualValue).toBe(24000000);
       expect(fue.pnl).toBe(4000000); // 24M - 20M cost
 
-      // BTC valuation chaining: qty (0.01) * 80000 (priceUsdt) * 25000 (usdtRate)
-      // 0.01 * 80000 = 800
-      // 800 * 25000 = 20,000,000
+      // BTC valuation: qty (0.01) * 2,000,000,000 VND (already converted from USD)
+      // = 20,000,000
       expect(btc.actualValue).toBe(20000000);
       expect(btc.pnl).toBe(20000000 - 17850000); // Value - Cost
     });
@@ -86,5 +85,36 @@ describe('portfolioCalculator logic', () => {
        // Net Worth = Liquid + Invested - Liabilities
        expect(nw.totalNetWorth).toBe(111850000 + 544000000 - 10000000);
     });
+  });
+});
+
+describe('Cổ tức (earnings) transactions', () => {
+  const dividend = {
+    assetClass: 'Cổ phiếu', currency: 'VNĐ', date: '20/03/2026 10:00:00',
+    quantity: 800, unitPrice: 1250, totalVND: 1000000, storage: 'TCBS',
+    ticker: 'FUEVN100', transactionType: 'Cổ tức'
+  };
+  const interest = {
+    assetClass: 'Tiền mặt VNĐ', currency: 'VNĐ', date: '21/03/2026 10:00:00',
+    quantity: 50000, unitPrice: 1, totalVND: 50000, storage: 'Techcombank',
+    ticker: '', transactionType: 'Cổ tức'
+  };
+
+  it('adds earnings to cash without changing cost basis or net capital', () => {
+    const holdings = calculateHoldings([...mockTransactions, dividend, interest]);
+    const cash = holdings.find(h => h.ticker === 'VNĐ');
+    const fue  = holdings.find(h => h.ticker === 'FUEVN100');
+
+    expect(cash.qty).toBe(36850000 + 1000000 + 50000);
+    expect(cash.totalCost).toBe(100000000);        // net capital unchanged
+    expect(fue.totalCost).toBe(20000000);           // cost basis unchanged
+    expect(fue.qty).toBe(800);
+
+    const portfolio = calculatePortfolio(holdings, mockMarketPrices);
+    const pnl = calculateTotalPnL(portfolio, [...mockTransactions, dividend, interest]);
+    expect(pnl.totalCost).toBe(100000000);
+    // Earnings flow straight into total P&L
+    const pnlWithout = calculateTotalPnL(calculatePortfolio(calculateHoldings(mockTransactions), mockMarketPrices), mockTransactions);
+    expect(pnl.totalPnL - pnlWithout.totalPnL).toBe(1050000);
   });
 });

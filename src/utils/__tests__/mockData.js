@@ -56,10 +56,12 @@ export const mockTransactions = [
   }
 ];
 
+// Market prices are ALWAYS stored in VND (crypto is converted by the backend
+// using the USDT/VND rate at fetch time, see price_service / scheduler).
 export const mockMarketPrices = {
-  USDT: { price: 25000 },
+  USDT: { price: 25000, exchangeRate: 25000 },
   FUEVN100: { price: 30000 },
-  BTC: { price: 80000 } // BTC is 80k USD
+  BTC: { price: 2000000000 } // 80,000 USD × 25,000 VND/USDT
 };
 
 export const mockExternalAssets = [

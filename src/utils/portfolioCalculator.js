@@ -7,8 +7,25 @@
  *   - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
  *   - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; totalCost unchanged)
  *   - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; totalCost unchanged)
+ *   - Cổ tức    → VNĐ_CASH.qty ↑ (earnings: dividend / interest / coupon; totalCost unchanged)
  * Total P&L = total portfolio value (assets + cash) − net capital deposited
  */
+
+// ============================================================
+// TRANSACTION TYPES (Portfolio Performance mapping)
+// ============================================================
+
+/** Transaction types and their Portfolio Performance equivalents. */
+export const TX_TYPES = {
+  DEPOSIT:  'Nạp tiền',   // PP: Deposit
+  REMOVAL:  'Rút tiền',   // PP: Removal
+  BUY:      'Mua',        // PP: Buy
+  SELL:     'Bán',        // PP: Sell
+  EARNINGS: 'Cổ tức',     // PP: Dividend / Interest
+};
+
+/** External cash flows (money moving between the investor and the portfolio). */
+export const CASH_FLOW_TX_TYPES = new Set([TX_TYPES.DEPOSIT, TX_TYPES.REMOVAL]);
 
 // ============================================================
 // ASSET CLASS MAPPING
@@ -79,6 +96,18 @@ export function calculateHoldings(transactions) {
           holdingsMap['VNĐ_CASH'].totalCost -= amount; // capital out
         }
       }
+      // Earnings without a security (e.g. bank interest on idle cash)
+      if (transactionType === 'Cổ tức') {
+        ensureCash(storage);
+        holdingsMap['VNĐ_CASH'].qty += amount; // earnings in; net capital unchanged
+      }
+      continue;
+    }
+
+    // ── Earnings on a security (dividend / coupon): cash in, cost basis untouched ──
+    if (transactionType === 'Cổ tức') {
+      ensureCash(storage);
+      holdingsMap['VNĐ_CASH'].qty += Math.abs(totalVND || 0);
       continue;
     }
 

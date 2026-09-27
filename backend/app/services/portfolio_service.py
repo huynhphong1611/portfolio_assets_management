@@ -6,6 +6,7 @@ Capital accounting model:
   - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
   - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; cash.totalCost UNCHANGED)
   - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; cash.totalCost UNCHANGED)
+  - Cổ tức    → VNĐ_CASH.qty ↑ (earnings: dividend / interest; cash.totalCost UNCHANGED)
 Total P&L = all holdings at market − net capital deposited
 
 Handles: Holdings, Portfolio valuation, Net Worth, Rebalance, P&L, Snapshot generation.
@@ -99,6 +100,16 @@ def calculate_holdings(transactions: list) -> list:
                     ensure_cash(storage)
                     holdings_map["VNĐ_CASH"]["qty"]       -= amount
                     holdings_map["VNĐ_CASH"]["totalCost"] -= amount  # capital out
+            # Earnings without a security (e.g. bank interest on idle cash)
+            if tx_type == "Cổ tức":
+                ensure_cash(storage)
+                holdings_map["VNĐ_CASH"]["qty"] += amount  # earnings in; net capital unchanged
+            continue
+
+        # ── Earnings on a security (dividend / coupon): cash in, cost basis untouched ──
+        if tx_type == "Cổ tức":
+            ensure_cash(storage)
+            holdings_map["VNĐ_CASH"]["qty"] += abs(total_vnd or 0)
             continue
 
         # ── Asset transactions ──
