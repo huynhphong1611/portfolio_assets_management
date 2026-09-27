@@ -15,8 +15,8 @@
  *
  * All money values are VND. All rates are fractions (0.1 = 10 %).
  */
-import { parseVNDate, toISO, toISODate, daysBetween, monthKey, todayISO } from './dates.js';
-import { TX_TYPES } from './portfolioCalculator.js';
+import { toISO, toISODate, daysBetween, monthKey, todayISO } from './dates.js';
+import { TX_TYPES, replayCash, sortTransactions } from './portfolioCalculator.js';
 
 const EPS = 1e-4;
 const TRADING_DAYS = 252;
@@ -44,22 +44,22 @@ export function buildValueSeries(snapshots = [], valueKey = 'portfolioValue') {
 
 /**
  * External cash flows (investor ↔ portfolio), by ISO date.
- * Deposits are positive, withdrawals negative.
- * @returns {{ byDate: Map<string, number>, flows: Array<{date, amount, type, storage, notes}> }}
+ * Deposits are positive, withdrawals negative. For a log without any deposit
+ * or withdrawal (trades-only import), purchases that needed more cash than the
+ * account held count as capital paid in (see replayCash).
+ * @returns {{ byDate: Map<string, number>, flows: Array<{date, amount, type, storage, notes, id, implicit}> }}
  */
 export function buildCashFlows(transactions = []) {
   const byDate = new Map();
   const flows = [];
-  for (const t of transactions) {
-    if (!t) continue;
-    const amt = Math.abs(Number(t.totalVND) || 0);
-    let signed = 0;
-    if (t.transactionType === TX_TYPES.DEPOSIT) signed = amt;
-    else if (t.transactionType === TX_TYPES.REMOVAL) signed = -amt;
-    else continue;
-    const date = toISO(t.date);
-    byDate.set(date, (byDate.get(date) || 0) + signed);
-    flows.push({ date, amount: signed, type: t.transactionType, storage: t.storage || '', notes: t.notes || '', id: t.id });
+  for (const f of replayCash(transactions).flows) {
+    byDate.set(f.date, (byDate.get(f.date) || 0) + f.amount);
+    flows.push({
+      date: f.date, amount: f.amount,
+      type: f.kind === 'implicit' ? TX_TYPES.DEPOSIT : f.tx.transactionType,
+      storage: f.tx.storage || '', notes: f.tx.notes || '', id: f.tx.id,
+      implicit: f.kind === 'implicit',
+    });
   }
   flows.sort((a, b) => a.date.localeCompare(b.date));
   return { byDate, flows };
@@ -294,13 +294,16 @@ export function computePeriodicReturns(indexPoints = []) {
 /**
  * Replay transactions with the same average-cost model as calculateHoldings,
  * recording every realised trade, earnings payment and open position.
+ * Realized P&L of a sale = proceeds − avgCost × qty sold. A sale larger than the
+ * position only realizes the part that was held; the rest is listed in `issues`.
  */
 export function replayTransactions(transactions = []) {
-  const sorted = [...transactions].filter(Boolean).sort((a, b) => parseVNDate(a.date) - parseVNDate(b.date));
+  const sorted = sortTransactions(transactions);
   const positions = {};
   const trades = [];
   const earnings = [];
   const securities = {};
+  const issues = [];
 
   const ensureSec = (ticker, assetClass, currency) => {
     if (!securities[ticker]) {
@@ -350,20 +353,30 @@ export function replayTransactions(transactions = []) {
       s.grossBuy += amount;
     } else if (type === TX_TYPES.SELL) {
       const pos = positions[ticker];
-      s.sells.push({ date, amount, qty });
-      s.grossSell += amount;
-      if (!pos || pos.qty <= EPS) continue; // sell without position — ignore (data issue)
+      const held = pos && pos.qty > EPS ? pos.qty : 0;
+      // Only the quantity actually held has a cost basis. The excess of an
+      // oversold sale is a data issue: its proceeds are not a realized gain.
+      const sellQty = Math.min(qty, held);
+      const exitValue = qty > 0 ? amount * (sellQty / qty) : 0;
+      if (qty - sellQty > EPS) {
+        issues.push({
+          kind: 'oversell', tx, id: tx.id, ticker, date, dateTime: tx.date,
+          qty, held, excessQty: qty - sellQty, excessValue: amount - exitValue,
+        });
+      }
+      if (sellQty <= EPS) continue;
+      s.sells.push({ date, amount: exitValue, qty: sellQty });
+      s.grossSell += exitValue;
       const avgCost = pos.totalCost / pos.qty;
-      const sellQty = Math.min(qty, pos.qty);
       const costBasis = avgCost * sellQty;
-      const pnl = amount - costBasis;
+      const pnl = exitValue - costBasis;
       const holdingDays = Math.max(0, daysBetween(pos.openDate, date));
       trades.push({
         ticker, assetClass: pos.assetClass, status: 'closed',
         start: pos.openDate, end: date, days: holdingDays,
-        qty: sellQty, entryValue: costBasis, exitValue: amount, pnl,
+        qty: sellQty, avgCost, entryValue: costBasis, exitValue, pnl,
         pnlPct: costBasis > 0 ? pnl / costBasis : 0,
-        annualized: annualizedReturn(costBasis, amount, holdingDays),
+        annualized: annualizedReturn(costBasis, exitValue, holdingDays),
         storage: tx.storage || '', notes: tx.notes || '', id: tx.id,
       });
       s.realized += pnl;
@@ -379,7 +392,7 @@ export function replayTransactions(transactions = []) {
 
   for (const s of Object.values(securities)) s.storages = Array.from(s.storages);
 
-  return { trades, earnings, openPositions, securities };
+  return { trades, earnings, openPositions, securities, issues };
 }
 
 function annualizedReturn(entry, exit, days) {
@@ -507,6 +520,7 @@ export function computePeriodReport({ snapshots = [], transactions = [], start, 
   const periodFlows = first && last ? flows.filter(f => f.date > first.date && f.date <= last.date) : [];
   const deposits = periodFlows.filter(f => f.amount > 0).reduce((s, f) => s + f.amount, 0);
   const withdrawals = periodFlows.filter(f => f.amount < 0).reduce((s, f) => s - f.amount, 0);
+  const implicitDeposits = periodFlows.filter(f => f.implicit).reduce((s, f) => s + f.amount, 0);
   const transferals = deposits - withdrawals;
 
   const replay = replayTransactions(transactions);
@@ -528,7 +542,7 @@ export function computePeriodReport({ snapshots = [], transactions = [], start, 
 
   return {
     start, end, points, series, flows, periodFlows, replay,
-    initialValue, finalValue, deposits, withdrawals, transferals,
+    initialValue, finalValue, deposits, withdrawals, implicitDeposits, transferals,
     realizedGains, earnings, capitalGains, absoluteChange, delta,
     ttwror: ttwror.cumulative, ttwrorAnnualized: ttwror.annualized, ttwrorPoints: ttwror.points, days: ttwror.days,
     irr,

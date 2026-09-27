@@ -1,13 +1,17 @@
 """
-Portfolio Calculator Engine v3 — Python port of portfolioCalculator.js.
+Portfolio Calculator Engine v4 — Python port of portfolioCalculator.js.
 
-Capital accounting model:
-  - Nạp tiền  → VNĐ_CASH.qty ↑, VNĐ_CASH.totalCost ↑ (net capital in)
-  - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
-  - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; cash.totalCost UNCHANGED)
-  - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; cash.totalCost UNCHANGED)
-  - Cổ tức    → VNĐ_CASH.qty ↑ (earnings: dividend / interest; cash.totalCost UNCHANGED)
-Total P&L = all holdings at market − net capital deposited
+Securities — moving average cost:
+  - Mua  qty += q, cost += amount, avgCost = cost / qty
+  - Bán  cost −= avgCost × q, qty −= q (a sale larger than the position closes it)
+
+Cash (the VNĐ deposit account) — see replay_cash():
+  - Nạp tiền  → cash ↑, net capital ↑
+  - Rút tiền  → cash ↓, net capital ↓
+  - Mua       → cash ↓ (capital unchanged)
+  - Bán       → cash ↑ (capital unchanged)
+  - Cổ tức    → cash ↑ (earnings: dividend / interest; capital unchanged)
+Total P&L = all holdings at market − net capital
 
 Handles: Holdings, Portfolio valuation, Net Worth, Rebalance, P&L, Snapshot generation.
 """
@@ -58,133 +62,174 @@ def parse_vietnamese_date(date_str: str) -> datetime:
         return datetime(1970, 1, 1)
 
 
+EPS = 1e-4
+DEPOSIT, REMOVAL, BUY, SELL, EARNINGS = "Nạp tiền", "Rút tiền", "Mua", "Bán", "Cổ tức"
+_SAME_TIME_RANK = {DEPOSIT: 0, REMOVAL: 2}
+STABLECOINS = {"USDT", "USDC"}
+
+
+def _is_cash_ticker(ticker) -> bool:
+    return not ticker or ticker == "VNĐ"
+
+
+def _num(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def sort_transactions(transactions: list | None) -> list:
+    """
+    Chronological order used by every engine (mirrors JS sortTransactions()).
+    Rows with the same timestamp keep their order, except that deposits come
+    first and removals last.
+    """
+    keyed = [
+        (parse_vietnamese_date(t.get("date", "")), _SAME_TIME_RANK.get(t.get("transactionType"), 1), i, t)
+        for i, t in enumerate(transactions or []) if t
+    ]
+    keyed.sort(key=lambda k: (k[0], k[1], k[2]))
+    return [k[3] for k in keyed]
+
+
+def replay_cash(transactions: list | None) -> dict:
+    """
+    Replay of the VNĐ deposit account (mirrors JS replayCash()).
+
+    tracked   the log has deposits / removals: every purchase debits and every
+              sale credits the account in full; the balance may go negative
+              (a purchase recorded before, or without, the deposit paying for it).
+    implicit  no deposits / removals at all (trades-only import): proceeds and
+              earnings pay for later purchases; whatever a purchase needs beyond
+              the balance counts as capital paid in (implicit deposit).
+    """
+    sorted_txs = sort_transactions(transactions)
+    mode = "tracked" if any(t.get("transactionType") in (DEPOSIT, REMOVAL) for t in sorted_txs) else "implicit"
+    balance = deposits = removals = implicit = earnings = min_balance = 0.0
+    moves = 0
+    storage = None
+
+    for tx in sorted_txs:
+        tx_type = tx.get("transactionType", "")
+        cash_row = _is_cash_ticker((tx.get("ticker") or "").strip())
+        amount = abs(_num(tx.get("totalVND")))
+        cash_amount = abs(_num(tx.get("totalVND")) or _num(tx.get("quantity")))
+        delta = None
+
+        if tx_type in (DEPOSIT, REMOVAL):
+            if tx_type == DEPOSIT:
+                deposits += cash_amount
+                delta = cash_amount
+            else:
+                removals += cash_amount
+                delta = -cash_amount
+            if storage is None:
+                storage = tx.get("storage") or ""
+        elif tx_type == EARNINGS:
+            delta = cash_amount if cash_row else amount
+            earnings += delta
+        elif cash_row:
+            continue
+        elif tx_type == BUY:
+            shortfall = amount - balance
+            if mode == "implicit" and shortfall > 0:
+                implicit += shortfall
+                balance += shortfall
+            delta = -amount
+        elif tx_type == SELL:
+            delta = amount
+
+        if delta is None:
+            continue
+        moves += 1
+        balance += delta
+        min_balance = min(min_balance, balance)
+
+    return {
+        "mode": mode, "balance": balance, "netCapital": deposits - removals + implicit,
+        "deposits": deposits, "removals": removals, "implicitDeposits": implicit,
+        "earnings": earnings, "minBalance": min_balance, "moves": moves, "storage": storage or "",
+    }
+
+
 def calculate_holdings(transactions: list) -> list:
     """
-    Calculate current holdings from transaction history. v3 capital model.
-    Mirrors JS calculateHoldings().
+    Current holdings (mirrors JS calculateHoldings()): one row per security at
+    moving average cost, plus the VNĐ row whose qty is the cash balance and
+    totalCost the net capital.
     """
     if not transactions:
         return []
 
-    sorted_txs = sorted(transactions, key=lambda t: parse_vietnamese_date(t.get("date", "")))
     holdings_map = {}
-
-    def ensure_cash(storage: str = "") -> None:
-        if "VNĐ_CASH" not in holdings_map:
-            holdings_map["VNĐ_CASH"] = {
-                "ticker": "VNĐ", "assetClass": "Tiền mặt VNĐ",
-                "qty": 0,          # actual liquid balance
-                "totalCost": 0,    # net capital deposited (Nạp − Rút only)
-                "avgCost": 1,
-                "storage": storage or "", "currency": "VNĐ",
-            }
-
-    for tx in sorted_txs:
-        ticker     = tx.get("ticker", "")
-        tx_type    = tx.get("transactionType", "")
-        asset_class = tx.get("assetClass", "")
-        quantity   = tx.get("quantity", 0)
-        total_vnd  = tx.get("totalVND", 0)
-        storage    = tx.get("storage", "")
-        currency   = tx.get("currency", "VNĐ")
-        amount     = abs(total_vnd or quantity or 0)
-
-        # ── Cash-flow transactions ──
-        if not ticker or ticker == "VNĐ":
-            if asset_class == "Tiền mặt VNĐ":
-                if tx_type == "Nạp tiền":
-                    ensure_cash(storage)
-                    holdings_map["VNĐ_CASH"]["qty"]       += amount
-                    holdings_map["VNĐ_CASH"]["totalCost"] += amount  # FIX: capital in
-                elif tx_type == "Rút tiền":
-                    ensure_cash(storage)
-                    holdings_map["VNĐ_CASH"]["qty"]       -= amount
-                    holdings_map["VNĐ_CASH"]["totalCost"] -= amount  # capital out
-            # Earnings without a security (e.g. bank interest on idle cash)
-            if tx_type == "Cổ tức":
-                ensure_cash(storage)
-                holdings_map["VNĐ_CASH"]["qty"] += amount  # earnings in; net capital unchanged
+    for tx in sort_transactions(transactions):
+        ticker = (tx.get("ticker") or "").strip()
+        tx_type = tx.get("transactionType", "")
+        if _is_cash_ticker(ticker) or tx_type not in (BUY, SELL):
             continue
 
-        # ── Earnings on a security (dividend / coupon): cash in, cost basis untouched ──
-        if tx_type == "Cổ tức":
-            ensure_cash(storage)
-            holdings_map["VNĐ_CASH"]["qty"] += abs(total_vnd or 0)
-            continue
-
-        # ── Asset transactions ──
-        key = ticker
-        if key not in holdings_map:
-            holdings_map[key] = {
-                "ticker": ticker, "assetClass": asset_class or "Khác",
-                "qty": 0, "totalCost": 0, "avgCost": 0,
-                "storage": storage or "", "currency": currency or "VNĐ",
+        storage = tx.get("storage", "")
+        if ticker not in holdings_map:
+            holdings_map[ticker] = {
+                "ticker": ticker, "assetClass": tx.get("assetClass") or "Khác",
+                "qty": 0.0, "totalCost": 0.0, "avgCost": 0.0,
+                "storage": storage or "", "currency": tx.get("currency") or "VNĐ",
             }
+        entry = holdings_map[ticker]
+        qty = abs(_num(tx.get("quantity")))
+        cost = abs(_num(tx.get("totalVND")))
 
-        entry = holdings_map[key]
-        qty  = abs(quantity or 0)
-        cost = abs(total_vnd or 0)
-
-        if tx_type == "Mua":
+        if tx_type == BUY:
             entry["totalCost"] += cost
-            entry["qty"]       += qty
-            entry["avgCost"]    = entry["totalCost"] / entry["qty"] if entry["qty"] > 0 else 0
+            entry["qty"] += qty
+            entry["avgCost"] = entry["totalCost"] / entry["qty"] if entry["qty"] > 0 else 0
             if storage:
                 entry["storage"] = storage
-            # Cash decreases, but net capital is unchanged
-            if "VNĐ_CASH" in holdings_map:
-                holdings_map["VNĐ_CASH"]["qty"] = max(0, holdings_map["VNĐ_CASH"]["qty"] - cost)
-                # FIX: do NOT touch totalCost
+        else:
+            sold = min(qty, entry["qty"])
+            entry["totalCost"] -= entry["avgCost"] * sold
+            entry["qty"] -= sold
+            if entry["qty"] <= EPS:
+                entry["qty"] = entry["totalCost"] = entry["avgCost"] = 0.0
 
-        elif tx_type == "Bán":
-            sold_cost_basis = entry["avgCost"] * qty
-            entry["qty"]       -= qty
-            entry["totalCost"] -= sold_cost_basis
-            if entry["qty"] <= 0.0001:
-                entry["qty"] = 0
-                entry["totalCost"] = 0
-                entry["avgCost"] = 0
-            else:
-                entry["avgCost"] = entry["totalCost"] / entry["qty"]
-            # Cash increases (proceeds), but net capital is unchanged
-            if "VNĐ_CASH" in holdings_map:
-                holdings_map["VNĐ_CASH"]["qty"] += cost
-                # FIX: do NOT touch totalCost
-
-    # Keep VNĐ_CASH even when qty == 0 as long as totalCost > 0
     result = []
+    cash = replay_cash(transactions)
+    if cash["moves"] and (abs(cash["balance"]) > EPS or abs(cash["netCapital"]) > EPS):
+        result.append({
+            "ticker": "VNĐ", "assetClass": "Tiền mặt VNĐ",
+            "qty": cash["balance"], "totalCost": cash["netCapital"], "avgCost": 1,
+            "storage": cash["storage"], "currency": "VNĐ",
+        })
     for h in holdings_map.values():
-        if h["qty"] > 0.0001 or (h["ticker"] == "VNĐ" and h["totalCost"] > 0):
-            h["avgCost"] = 1 if h["ticker"] == "VNĐ" else (h["totalCost"] / h["qty"] if h["qty"] > 0 else 0)
+        if h["qty"] > EPS:
+            h["avgCost"] = h["totalCost"] / h["qty"]
             result.append(h)
     return result
 
 
 def calculate_portfolio(holdings: list, market_prices: dict = None) -> list:
     """
-    Calculate portfolio with market prices.
-    Equivalent to JS calculatePortfolio().
+    Value every holding (mirrors JS calculatePortfolio()). Prices are VND per
+    unit; without a market price a holding is valued at its average cost, a
+    stablecoin at its exchange rate, then the USDT rate, then its average cost.
     """
     if market_prices is None:
         market_prices = {}
 
-    usdt_data = market_prices.get("USDT", {})
-    usdt_rate = usdt_data.get("exchangeRate") or usdt_data.get("price") or 1
+    usdt_data = market_prices.get("USDT") or {}
+    usdt_rate = usdt_data.get("price") or usdt_data.get("exchangeRate") or 0
 
     result = []
     for h in holdings:
-        market = market_prices.get(h["ticker"], {})
-        market_price = market.get("price")
-
+        market = market_prices.get(h["ticker"]) or {}
         if h["ticker"] == "VNĐ":
-            actual_value = h["qty"]
             market_price = 1
-        elif h["ticker"] in ("USDT", "USDC"):
-            actual_value = h["qty"] * market_price if market_price else h["qty"] * usdt_rate
-            market_price = market_price or usdt_rate
+        elif h["ticker"] in STABLECOINS:
+            market_price = market.get("price") or market.get("exchangeRate") or usdt_rate or h["avgCost"]
         else:
             market_price = market.get("price") or h["avgCost"]
-            actual_value = h["qty"] * market_price
+        actual_value = h["qty"] * market_price
 
         pnl = actual_value - h["totalCost"]
         pnl_percent = (pnl / h["totalCost"]) * 100 if h["totalCost"] > 0 else 0
@@ -308,45 +353,23 @@ def calculate_rebalance(portfolio: list, target_weights: dict = None) -> list:
 
 def calculate_total_pnl(portfolio: list, transactions: list = None) -> dict:
     """
-    Calculate true portfolio P&L using capital-basis accounting.
-    P&L = total current value (all assets + cash) − net capital deposited.
-    Mirrors JS calculateTotalPnL() v3.
+    Total P&L = total current value (all assets + cash) − net capital.
+    Mirrors JS calculateTotalPnL().
 
-    Priority for net-capital:
-      1. Transaction log (Nạp tiền / Rút tiền rows) — authoritative
-      2. VNĐ_CASH.totalCost > 0  — for accounts with no cash-flow rows
-      3. Sum of cost-basis       — last resort (import-only portfolios)
+    Net capital comes from the cash replay of the log (deposits − removals, or
+    the implicit deposits of a trades-only log). It may be ≤ 0 after withdrawing
+    more than was paid in: the P&L stays value − capital, the % is then 0.
+    Without transactions: the cash row's net capital, else the cost basis.
     """
-    if transactions is None:
-        transactions = []
+    total_value = sum(p.get("actualValue", 0) or 0 for p in portfolio)
 
-    # 1. Total current value = ALL portfolio items (assets + cash)
-    total_value = sum(p.get("actualValue", 0) for p in portfolio)
-
-    # 2. Derive net capital from transaction log (always most reliable)
-    tx_net_capital = 0.0
-    has_cash_flow_tx = False
-    for t in transactions:
-        amt = abs(t.get("totalVND", 0) or 0)
-        if t.get("transactionType") == "Nạp tiền":
-            tx_net_capital += amt
-            has_cash_flow_tx = True
-        elif t.get("transactionType") == "Rút tiền":
-            tx_net_capital -= amt
-            has_cash_flow_tx = True
-
-    # 3. Choose best source
     cash_item = next((p for p in portfolio if p.get("ticker") == "VNĐ"), None)
-
-    if has_cash_flow_tx:
-        net_capital = tx_net_capital
-    elif cash_item and cash_item.get("totalCost", 0) > 0:
-        net_capital = cash_item["totalCost"]
+    if transactions:
+        net_capital = replay_cash(transactions)["netCapital"]
+    elif cash_item:
+        net_capital = cash_item.get("totalCost", 0)
     else:
         net_capital = sum(p.get("totalCost", 0) for p in portfolio)
-
-    # Guard: net_capital should never be negative
-    net_capital = max(0.0, net_capital)
 
     total_pnl = total_value - net_capital
     total_pnl_percent = (total_pnl / net_capital * 100) if net_capital > 0 else 0
@@ -403,7 +426,6 @@ FEED_AUTO = "AUTO"
 FEED_MANUAL = "MANUAL"
 FEED_JSON = "GENERIC-JSON"
 USER_PRICED_FEEDS = {FEED_MANUAL, FEED_JSON}
-STABLECOINS = {"USDT", "USDC"}
 
 
 def security_feeds(securities: list | None) -> dict:

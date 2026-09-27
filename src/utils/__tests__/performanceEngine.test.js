@@ -190,6 +190,35 @@ describe('transaction replay', () => {
     expect(fue.isOpen).toBe(true);
   });
 
+  it('only realizes the part of an oversold sale that was held', () => {
+    const t = (date, transactionType, quantity, totalVND) => ({ date, transactionType, ticker: 'USDT', assetClass: 'Tiền mặt USD', quantity, totalVND, id: date });
+    const replay = replayTransactions([
+      t('02/12/2025 22:31:41', 'Mua', 111.28, 111.28 * 25800),
+      t('02/12/2025 22:33:34', 'Bán', -116.48, 116.48 * 25765),
+    ]);
+    const trade = replay.trades[0];
+    expect(trade.qty).toBeCloseTo(111.28, 9);
+    expect(trade.exitValue).toBeCloseTo(111.28 * 25765, 6);
+    expect(trade.pnl).toBeCloseTo(111.28 * (25765 - 25800), 6);   // not +5.2 × 25,765 of phantom profit
+    expect(replay.issues).toHaveLength(1);
+    expect(replay.issues[0]).toMatchObject({ kind: 'oversell', ticker: 'USDT', id: '02/12/2025 22:33:34' });
+    expect(replay.issues[0].excessQty).toBeCloseTo(5.2, 9);
+    expect(replay.issues[0].excessValue).toBeCloseTo(5.2 * 25765, 6);
+    expect(replay.securities.USDT.realized).toBeCloseTo(trade.pnl, 9);
+  });
+
+  it('turns purchases of a trades-only log into implicit deposits for TTWROR', () => {
+    const txs = [
+      { date: '01/01/2026 09:00:00', transactionType: 'Mua', ticker: 'VNM', assetClass: 'Cổ phiếu', quantity: 10, totalVND: 100 },
+      { date: '05/01/2026 09:00:00', transactionType: 'Mua', ticker: 'FPT', assetClass: 'Cổ phiếu', quantity: 1, totalVND: 50 },
+    ];
+    const { flows, byDate } = buildCashFlows(txs);
+    expect(flows.map(f => [f.date, f.amount, f.implicit])).toEqual([['2026-01-01', 100, true], ['2026-01-05', 50, true]]);
+    expect(byDate.get('2026-01-05')).toBe(50);
+    // with explicit deposits there are no implicit flows
+    expect(buildCashFlows(mockTransactions).flows.every(f => !f.implicit)).toBe(true);
+  });
+
   it('aggregates cash flows by month', () => {
     const rows = computeMonthlyCashFlows(mockTransactions);
     expect(rows).toHaveLength(1);

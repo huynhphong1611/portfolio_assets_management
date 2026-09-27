@@ -56,7 +56,10 @@ export default function CalculationView() {
     { id: 'fees', sign: '−', label: 'Phí giao dịch', value: null, note: 'chưa theo dõi riêng (đã gộp trong giá)' },
     { id: 'taxes', sign: '−', label: 'Thuế', value: null, note: 'chưa theo dõi riêng' },
     { id: 'transfers', sign: '+', label: 'Chuyển tiền trung tính', value: report.transferals, hint: 'Nạp − rút: không phải lãi/lỗ',
-      children: [{ label: 'Nạp tiền', value: report.deposits }, { label: 'Rút tiền', value: -report.withdrawals }] },
+      children: [
+        { label: report.implicitDeposits > 0 ? 'Nạp tiền (gồm vốn ngầm định của lệnh mua)' : 'Nạp tiền', value: report.deposits },
+        { label: 'Rút tiền', value: -report.withdrawals },
+      ] },
     { id: 'final', label: `Giá trị cuối kỳ (${formatISO(endDate)})`, value: report.finalValue, total: true },
   ];
 

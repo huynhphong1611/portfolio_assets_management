@@ -3,114 +3,117 @@
  *   - Deposit accounts   (cash)       → buildCashLedger
  *   - Securities accounts (depots)    → calculateHoldingsByStorage
  *
- * Both functions replay transactions with EXACTLY the same rules as
- * calculateHoldings() so the balances always reconcile with the
- * Statement of Assets.
+ * The cash ledger is the same replay (replayCash) that calculateHoldings()
+ * uses, so its balance always reconciles with the Statement of Assets.
  */
-import { parseVNDate, toISO } from './dates.js';
-import { TX_TYPES } from './portfolioCalculator.js';
+import { replayCash, sortTransactions, TX_TYPES } from './portfolioCalculator.js';
 
 const EPS = 1e-4;
 export const UNKNOWN_STORAGE = 'Chưa gán nơi lưu ký';
 
-const byDate = (a, b) => parseVNDate(a.date) - parseVNDate(b.date);
-
 /**
  * Running balance of the VNĐ cash (deposit) account.
  *
- * Mirrors calculateHoldings():
- *   - Nạp / Rút tiền (no ticker, asset class "Tiền mặt VNĐ") open the account
- *   - Cổ tức always credits the account (and opens it)
- *   - Mua debits (balance floored at 0), Bán credits — only once the account exists
- *
- * @returns {{ rows: Array, balance: number, netDeposits: number }}
- *          rows are chronological; each row has { tx, date, delta, balance }.
+ * @returns {{ rows: Array, balance: number, netDeposits: number, mode: string,
+ *            implicitDeposits: number, minBalance: number }}
+ *          rows are chronological; each row has { tx, id, date, kind, delta, balance }.
+ *          kind "implicit" is capital a purchase needed beyond the balance when the
+ *          log records no deposits at all. A negative balance means purchases were
+ *          recorded before (or without) the deposit that paid for them.
  */
 export function buildCashLedger(transactions = []) {
-  const sorted = [...transactions].filter(Boolean).sort(byDate);
-  let exists = false;
-  let balance = 0;
-  let netDeposits = 0;
-  const rows = [];
-
-  for (const tx of sorted) {
-    const type = tx.transactionType;
-    const ticker = tx.ticker || '';
-    const isCashRow = !ticker || ticker === 'VNĐ';
-    const cashAmount = Math.abs(Number(tx.totalVND) || Number(tx.quantity) || 0);
-    const amount = Math.abs(Number(tx.totalVND) || 0);
-    let delta = null;
-
-    if (isCashRow) {
-      if (tx.assetClass === 'Tiền mặt VNĐ' && type === TX_TYPES.DEPOSIT) {
-        exists = true; delta = cashAmount; netDeposits += cashAmount;
-      } else if (tx.assetClass === 'Tiền mặt VNĐ' && type === TX_TYPES.REMOVAL) {
-        exists = true; delta = -cashAmount; netDeposits -= cashAmount;
-      } else if (type === TX_TYPES.EARNINGS) {
-        exists = true; delta = cashAmount;
-      }
-    } else if (type === TX_TYPES.EARNINGS) {
-      exists = true; delta = amount;
-    } else if (type === TX_TYPES.BUY && exists) {
-      delta = Math.max(0, balance - amount) - balance;
-    } else if (type === TX_TYPES.SELL && exists) {
-      delta = amount;
-    }
-
-    if (delta === null) continue;
-    balance += delta;
-    rows.push({ tx, id: tx.id, date: toISO(tx.date), delta, balance, requested: type === TX_TYPES.BUY ? -amount : delta });
-  }
-
-  return { rows, balance, netDeposits };
+  const cash = replayCash(transactions);
+  return {
+    rows: cash.rows.map(r => ({ ...r, id: r.tx.id })),
+    balance: cash.balance,
+    netDeposits: cash.netCapital,
+    mode: cash.mode,
+    implicitDeposits: cash.implicitDeposits,
+    minBalance: cash.minBalance,
+  };
 }
+
+/** Storage names are free text: "Binance", "binance " and "BINANCE" are one account. */
+export const storageKey = (storage) => (storage || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 /**
  * Holdings per securities account (the transaction's `storage` field:
- * broker, exchange, fund platform…). Average-cost model per account.
+ * broker, exchange, fund platform…). Moving average cost per account.
+ *
+ * Account names are matched case-insensitively and shown in their most used
+ * spelling. A sale larger than what its account holds takes the rest from the
+ * other accounts holding the security (largest first), so the quantities per
+ * account always add up to the portfolio holdings.
  *
  * @param {Array} transactions
  * @param {Array} portfolio  output of calculatePortfolio (for market prices)
- * @returns {Array<{ name, positions: Array, value, cost, pnl, txCount }>}
+ * @returns {Array<{ name, positions: Array, value, cost, pnl, txCount, transactions }>}
  */
 export function calculateHoldingsByStorage(transactions = [], portfolio = []) {
   const priceOf = Object.fromEntries(portfolio.map(p => [p.ticker, p.marketPrice]));
   const classOf = Object.fromEntries(portfolio.map(p => [p.ticker, p.assetClass]));
   const accounts = new Map();
 
-  const getAccount = (name) => {
-    if (!accounts.has(name)) accounts.set(name, { name, positions: new Map(), txCount: 0, transactions: [] });
-    return accounts.get(name);
+  const getAccount = (storage) => {
+    const key = storageKey(storage);
+    if (!accounts.has(key)) {
+      accounts.set(key, { key, spellings: new Map(), positions: new Map(), txCount: 0, transactions: [] });
+    }
+    const acc = accounts.get(key);
+    const spelling = (storage || '').trim().replace(/\s+/g, ' ') || UNKNOWN_STORAGE;
+    acc.spellings.set(spelling, (acc.spellings.get(spelling) || 0) + 1);
+    return acc;
+  };
+  const positionOf = (acc, ticker, assetClass) => {
+    if (!acc.positions.has(ticker)) {
+      acc.positions.set(ticker, { ticker, assetClass: assetClass || classOf[ticker] || 'Khác', qty: 0, totalCost: 0 });
+    }
+    return acc.positions.get(ticker);
+  };
+  const sellFrom = (pos, qty) => {
+    const take = Math.min(qty, pos.qty);
+    const avg = pos.qty > EPS ? pos.totalCost / pos.qty : 0;
+    pos.qty -= take;
+    pos.totalCost -= avg * take;
+    if (pos.qty <= EPS) { pos.qty = 0; pos.totalCost = 0; }
+    return take;
   };
 
-  for (const tx of [...transactions].filter(Boolean).sort(byDate)) {
+  for (const tx of sortTransactions(transactions)) {
     const ticker = (tx.ticker || '').trim();
     const type = tx.transactionType;
-    const name = (tx.storage || '').trim() || UNKNOWN_STORAGE;
-    const acc = getAccount(name);
+    const acc = getAccount(tx.storage);
     acc.txCount += 1;
     acc.transactions.push(tx);
     if (!ticker || ticker === 'VNĐ') continue;
     if (type !== TX_TYPES.BUY && type !== TX_TYPES.SELL) continue;
 
-    if (!acc.positions.has(ticker)) {
-      acc.positions.set(ticker, { ticker, assetClass: tx.assetClass || classOf[ticker] || 'Khác', qty: 0, totalCost: 0 });
-    }
-    const pos = acc.positions.get(ticker);
+    const pos = positionOf(acc, ticker, tx.assetClass);
     const qty = Math.abs(Number(tx.quantity) || 0);
-    const cost = Math.abs(Number(tx.totalVND) || 0);
 
     if (type === TX_TYPES.BUY) {
       pos.qty += qty;
-      pos.totalCost += cost;
-    } else {
-      const sellQty = Math.min(qty, pos.qty);
-      const avg = pos.qty > EPS ? pos.totalCost / pos.qty : 0;
-      pos.qty -= sellQty;
-      pos.totalCost -= avg * sellQty;
-      if (pos.qty <= EPS) { pos.qty = 0; pos.totalCost = 0; }
+      pos.totalCost += Math.abs(Number(tx.totalVND) || 0);
+      continue;
+    }
+
+    let rest = qty - sellFrom(pos, qty);
+    if (rest > EPS) {
+      const others = Array.from(accounts.values())
+        .filter(a => a !== acc && a.positions.get(ticker)?.qty > EPS)
+        .sort((a, b) => b.positions.get(ticker).qty - a.positions.get(ticker).qty);
+      for (const other of others) {
+        if (rest <= EPS) break;
+        rest -= sellFrom(other.positions.get(ticker), rest);
+      }
     }
   }
+
+  const displayName = (acc) => {
+    let best = null;
+    for (const [spelling, n] of acc.spellings) if (!best || n > best[1]) best = [spelling, n];
+    return best ? best[0] : UNKNOWN_STORAGE;
+  };
 
   return Array.from(accounts.values()).map(acc => {
     const positions = Array.from(acc.positions.values())
@@ -124,6 +127,11 @@ export function calculateHoldingsByStorage(transactions = [], portfolio = []) {
       .sort((a, b) => b.value - a.value);
     const value = positions.reduce((s, p) => s + p.value, 0);
     const cost = positions.reduce((s, p) => s + p.totalCost, 0);
-    return { name: acc.name, positions, value, cost, pnl: value - cost, txCount: acc.txCount, transactions: acc.transactions };
+    const name = displayName(acc);
+    return {
+      name,
+      spellings: acc.spellings.size > 1 ? Array.from(acc.spellings.keys()) : [name],
+      positions, value, cost, pnl: value - cost, txCount: acc.txCount, transactions: acc.transactions,
+    };
   }).sort((a, b) => b.value - a.value || b.txCount - a.txCount);
 }

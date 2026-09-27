@@ -3,7 +3,9 @@ import {
   calculateHoldings, 
   calculatePortfolio, 
   calculateNetWorth, 
-  calculateTotalPnL 
+  calculateTotalPnL,
+  replayCash,
+  sortTransactions,
 } from '../portfolioCalculator';
 import { mockTransactions, mockMarketPrices, mockExternalAssets, mockLiabilities } from './mockData';
 
@@ -116,5 +118,121 @@ describe('Cổ tức (earnings) transactions', () => {
     // Earnings flow straight into total P&L
     const pnlWithout = calculateTotalPnL(calculatePortfolio(calculateHoldings(mockTransactions), mockMarketPrices), mockTransactions);
     expect(pnl.totalPnL - pnlWithout.totalPnL).toBe(1050000);
+  });
+});
+
+describe('cash replay and net capital', () => {
+  const t = (date, transactionType, ticker, quantity, totalVND, assetClass = 'Cổ phiếu') => ({
+    date, transactionType, ticker, quantity, totalVND, assetClass: ticker ? assetClass : 'Tiền mặt VNĐ',
+  });
+
+  it('never floors the cash balance: a purchase larger than the balance leaves it negative', () => {
+    const txs = [
+      t('01/01/2026 09:00:00', 'Nạp tiền', '', 100, 100),
+      t('02/01/2026 09:00:00', 'Mua', 'VNM', 1, 150),
+    ];
+    const holdings = calculateHoldings(txs);
+    expect(holdings.find(h => h.ticker === 'VNĐ').qty).toBe(-50);
+    const pnl = calculateTotalPnL(calculatePortfolio(holdings, {}), txs);
+    // valued at cost there is no profit — the old floor showed +50
+    expect(pnl.totalValue).toBe(100);
+    expect(pnl.totalPnL).toBe(0);
+  });
+
+  it('reconciles a purchase recorded minutes before the deposit that paid for it', () => {
+    const txs = [
+      t('03/02/2026 21:40:13', 'Mua', 'USDT', 350, 9341500, 'Tiền mặt USD'),
+      t('03/02/2026 21:41:49', 'Nạp tiền', '', 13345000, 13345000),
+    ];
+    const cash = replayCash(txs);
+    expect(cash.mode).toBe('tracked');
+    expect(cash.minBalance).toBe(-9341500);
+    expect(cash.balance).toBe(13345000 - 9341500);
+    expect(cash.netCapital).toBe(13345000);
+  });
+
+  it('books deposits before purchases that share their timestamp', () => {
+    const txs = [
+      t('05/02/2026 10:00:00', 'Mua', 'VNM', 10, 500),
+      t('05/02/2026 10:00:00', 'Nạp tiền', '', 500, 500),
+    ];
+    expect(sortTransactions(txs).map(x => x.transactionType)).toEqual(['Nạp tiền', 'Mua']);
+    expect(replayCash(txs).minBalance).toBe(0);
+  });
+
+  it('uses implicit capital for a trades-only log so realized gains and earnings count', () => {
+    const txs = [
+      t('01/01/2026 09:00:00', 'Mua', 'VNM', 10, 100),
+      t('02/01/2026 09:00:00', 'Cổ tức', 'VNM', 10, 5),
+      t('03/01/2026 09:00:00', 'Bán', 'VNM', -10, 110),
+      t('04/01/2026 09:00:00', 'Mua', 'FPT', 1, 50),
+    ];
+    const holdings = calculateHoldings(txs);
+    const cash = holdings.find(h => h.ticker === 'VNĐ');
+    expect(cash.qty).toBe(65);          // 5 + 110 − 50: FPT was paid from the proceeds
+    expect(cash.totalCost).toBe(100);   // capital actually put in
+    const pnl = calculateTotalPnL(calculatePortfolio(holdings, {}), txs);
+    expect(pnl.totalPnL).toBe(15);      // 10 realized + 5 dividend
+    expect(pnl.totalPnLPercent).toBeCloseTo(15, 9);
+  });
+
+  it('keeps the profit when more was withdrawn than deposited (no clamp at 0)', () => {
+    const txs = [
+      t('01/01/2026 09:00:00', 'Nạp tiền', '', 100, 100),
+      t('02/01/2026 09:00:00', 'Mua', 'VNM', 1, 100),
+      t('03/01/2026 09:00:00', 'Bán', 'VNM', -1, 300),
+      t('04/01/2026 09:00:00', 'Rút tiền', '', 200, 200),
+    ];
+    const pnl = calculateTotalPnL(calculatePortfolio(calculateHoldings(txs), {}), txs);
+    expect(pnl.totalCost).toBe(-100);
+    expect(pnl.totalValue).toBe(100);
+    expect(pnl.totalPnL).toBe(200);
+    expect(pnl.totalPnLPercent).toBe(0);
+  });
+
+  it('treats every deposit row as VNĐ cash, whatever its ticker', () => {
+    const txs = [{ date: '01/01/2026 09:00:00', transactionType: 'Nạp tiền', ticker: 'USDT', assetClass: 'Tiền mặt USD', quantity: 2600000, totalVND: 2600000 }];
+    const holdings = calculateHoldings(txs);
+    expect(holdings.map(h => h.ticker)).toEqual(['VNĐ']);
+    expect(calculateTotalPnL(calculatePortfolio(holdings, {}), txs).totalPnL).toBe(0);
+  });
+});
+
+describe('average cost of securities', () => {
+  const t = (date, transactionType, quantity, totalVND) => ({ date, transactionType, ticker: 'USDT', assetClass: 'Tiền mặt USD', quantity, totalVND });
+
+  it('is a moving average that sales do not change', () => {
+    const txs = [
+      t('01/01/2026 09:00:00', 'Mua', 100, 2500000),
+      t('02/01/2026 09:00:00', 'Mua', 100, 2700000),
+      t('03/01/2026 09:00:00', 'Bán', -50, 1400000),
+      t('04/01/2026 09:00:00', 'Mua', 50, 1300000),
+    ];
+    const usdt = calculateHoldings(txs).find(h => h.ticker === 'USDT');
+    // (5.2M − 26,000 × 50 + 1.3M) / 200
+    expect(usdt.qty).toBe(200);
+    expect(usdt.avgCost).toBeCloseTo((5200000 - 26000 * 50 + 1300000) / 200, 9);
+  });
+
+  it('closes an oversold position at zero and starts the next purchase afresh', () => {
+    const txs = [
+      t('01/01/2026 09:00:00', 'Mua', 10, 260),
+      t('02/01/2026 09:00:00', 'Bán', -12, 312),
+      t('03/01/2026 09:00:00', 'Mua', 5, 130),
+    ];
+    const usdt = calculateHoldings(txs).find(h => h.ticker === 'USDT');
+    expect(usdt.qty).toBe(5);
+    expect(usdt.avgCost).toBe(26);
+  });
+
+  it('values a stablecoin without a price at its rate, the USDT rate, then its cost — never NaN', () => {
+    const holdings = [
+      { ticker: 'USDT', assetClass: 'Tiền mặt USD', qty: 10, totalCost: 260000, avgCost: 26000 },
+      { ticker: 'USDC', assetClass: 'Tiền mặt USD', qty: 10, totalCost: 250000, avgCost: 25000 },
+    ];
+    const atCost = calculatePortfolio(holdings, {});
+    expect(atCost.map(p => p.actualValue)).toEqual([260000, 250000]);
+    const withRate = calculatePortfolio(holdings, { USDT: { exchangeRate: 26500 } });
+    expect(withRate.map(p => p.marketPrice)).toEqual([26500, 26500]);
   });
 });

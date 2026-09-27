@@ -1,15 +1,25 @@
 /**
- * Portfolio Calculator Engine v3
+ * Portfolio Calculator Engine v4
  *
  * Holdings, Net Worth, Rebalance, P&L, Snapshot generation
- * Capital accounting model:
- *   - Nạp tiền  → VNĐ_CASH.qty ↑, VNĐ_CASH.totalCost ↑ (net capital in)
- *   - Rút tiền  → VNĐ_CASH.qty ↓, VNĐ_CASH.totalCost ↓ (net capital out)
- *   - Mua       → VNĐ_CASH.qty ↓, asset cost↑  (capital moves; totalCost unchanged)
- *   - Bán       → VNĐ_CASH.qty ↑, asset cost↓  (capital returns; totalCost unchanged)
- *   - Cổ tức    → VNĐ_CASH.qty ↑ (earnings: dividend / interest / coupon; totalCost unchanged)
- * Total P&L = total portfolio value (assets + cash) − net capital deposited
+ *
+ * Securities — moving average cost (bình quân gia quyền di động):
+ *   - Mua  qty += q, cost += amount, avgCost = cost / qty
+ *   - Bán  cost −= avgCost × q, qty −= q  (avgCost unchanged by a sale;
+ *          realized P&L of the sale = proceeds − avgCost × q)
+ *   - A sale larger than the position closes it; the excess is a data issue
+ *     reported by dataChecks.js, never profit.
+ *
+ * Cash (the VNĐ deposit account) — see replayCash():
+ *   - Nạp tiền  → cash ↑, net capital ↑
+ *   - Rút tiền  → cash ↓, net capital ↓
+ *   - Mua       → cash ↓ (capital unchanged)
+ *   - Bán       → cash ↑ (capital unchanged)
+ *   - Cổ tức    → cash ↑ (earnings: dividend / interest / coupon; capital unchanged)
+ * Total P&L = total portfolio value (assets + cash) − net capital
+ *           = realized + unrealized + earnings
  */
+import { parseVNDate, toISO } from './dates.js';
 
 // ============================================================
 // TRANSACTION TYPES (Portfolio Performance mapping)
@@ -50,71 +60,141 @@ export const ASSET_CLASS_LABELS = {
 };
 
 // ============================================================
-// CALCULATE HOLDINGS
+// ORDERING
 // ============================================================
 
-export function calculateHoldings(transactions) {
-  if (!transactions || transactions.length === 0) return [];
+const EPS = 1e-4;
 
-  const sorted = [...transactions].sort((a, b) => {
-    const dateA = parseVietnameseDate(a.date);
-    const dateB = parseVietnameseDate(b.date);
-    return dateA - dateB;
-  });
+/** Rows without a security (or with ticker "VNĐ") are cash rows. */
+const isCashTicker = (ticker) => !ticker || ticker === 'VNĐ';
 
-  const holdingsMap = {};
+/** Deposits come first and removals last among rows with the same timestamp. */
+const SAME_TIME_RANK = { [TX_TYPES.DEPOSIT]: 0, [TX_TYPES.REMOVAL]: 2 };
 
-  /** Ensure VNĐ_CASH entry exists (lazy init). */
-  const ensureCash = (storage = '') => {
-    if (!holdingsMap['VNĐ_CASH']) {
-      holdingsMap['VNĐ_CASH'] = {
-        ticker: 'VNĐ',
-        assetClass: 'Tiền mặt VNĐ',
-        qty: 0,           // actual liquid balance — changes on all tx types
-        totalCost: 0,     // net capital deposited  — only changes on Nạp / Rút
-        avgCost: 1,
-        storage: storage || '',
-        currency: 'VNĐ',
-      };
-    }
+/**
+ * Chronological order used by every engine (holdings, cash, accounts, reports).
+ * Rows with the same timestamp keep their original order, except that money
+ * paid in is booked before it is spent and removals after everything else.
+ */
+export function sortTransactions(transactions = []) {
+  return (transactions || [])
+    .filter(Boolean)
+    .map((tx, i) => ({ tx, i, t: parseVNDate(tx.date).getTime(), r: SAME_TIME_RANK[tx.transactionType] ?? 1 }))
+    .sort((a, b) => a.t - b.t || a.r - b.r || a.i - b.i)
+    .map(x => x.tx);
+}
+
+// ============================================================
+// CASH (VNĐ DEPOSIT ACCOUNT)
+// ============================================================
+
+/**
+ * Replay of the VNĐ deposit account — the single source of truth for cash,
+ * net capital and external cash flows (used by calculateHoldings, the Deposit
+ * Accounts view and the performance engine, so they always agree).
+ *
+ * Two bookkeeping modes, decided by the whole log:
+ *   tracked   the log has deposits / removals (Nạp / Rút tiền). Every purchase
+ *             debits and every sale credits the account in full. The balance may
+ *             go negative: a purchase was entered before (or without) the deposit
+ *             that paid for it. dataChecks.js reports it; it is never hidden,
+ *             because flooring the balance at 0 would invent cash and profit.
+ *   implicit  no deposits / removals at all (e.g. a trades-only import). Sale
+ *             proceeds and earnings stay in the account and pay for later
+ *             purchases; whatever a purchase needs beyond the balance counts as
+ *             capital paid in (an implicit deposit).
+ *
+ * Nạp / Rút tiền always move VNĐ (a ticker on such a row is ignored).
+ * Mua / Bán on a cash row (no ticker, or "VNĐ") do nothing.
+ *
+ * @returns {{
+ *   mode: 'tracked'|'implicit',
+ *   rows: Array<{ tx, date: string, kind: string, delta: number, balance: number }>,
+ *   flows: Array<{ tx, date: string, amount: number, kind: string }>,
+ *   balance: number, netCapital: number, deposits: number, removals: number,
+ *   implicitDeposits: number, earnings: number, minBalance: number, storage: string
+ * }}
+ *   rows  — every movement of the account, chronological; kind is one of
+ *           deposit | removal | earnings | buy | sell | implicit
+ *   flows — capital paid in (+) or taken out (−): deposits, removals and
+ *           implicit deposits; these are the external flows for TTWROR / IRR
+ */
+export function replayCash(transactions = []) {
+  const sorted = sortTransactions(transactions);
+  const mode = sorted.some(tx => CASH_FLOW_TX_TYPES.has(tx.transactionType)) ? 'tracked' : 'implicit';
+  const rows = [];
+  const flows = [];
+  let balance = 0, deposits = 0, removals = 0, implicitDeposits = 0, earnings = 0, minBalance = 0;
+  let storage = null;
+
+  const book = (tx, kind, delta) => {
+    balance += delta;
+    if (balance < minBalance) minBalance = balance;
+    rows.push({ tx, date: toISO(tx.date), kind, delta, balance });
   };
 
   for (const tx of sorted) {
-    const { ticker, transactionType, assetClass, quantity, totalVND, storage, currency } = tx;
-    const amount = Math.abs(totalVND || quantity || 0);
+    const type = tx.transactionType;
+    const cashRow = isCashTicker((tx.ticker || '').trim());
+    const amount = Math.abs(Number(tx.totalVND) || 0);
+    // cash rows may only carry the amount in `quantity`
+    const cashAmount = Math.abs(Number(tx.totalVND) || Number(tx.quantity) || 0);
 
-    // ── Cash-flow transactions (no ticker or ticker = 'VNĐ') ──
-    if (!ticker || ticker === 'VNĐ') {
-      if (assetClass === 'Tiền mặt VNĐ') {
-        if (transactionType === 'Nạp tiền') {
-          ensureCash(storage);
-          holdingsMap['VNĐ_CASH'].qty       += amount;
-          holdingsMap['VNĐ_CASH'].totalCost += amount; // FIX: capital in
-        } else if (transactionType === 'Rút tiền') {
-          ensureCash(storage);
-          holdingsMap['VNĐ_CASH'].qty       -= amount;
-          holdingsMap['VNĐ_CASH'].totalCost -= amount; // capital out
-        }
-      }
-      // Earnings without a security (e.g. bank interest on idle cash)
-      if (transactionType === 'Cổ tức') {
-        ensureCash(storage);
-        holdingsMap['VNĐ_CASH'].qty += amount; // earnings in; net capital unchanged
-      }
+    if (type === TX_TYPES.DEPOSIT || type === TX_TYPES.REMOVAL) {
+      const signed = type === TX_TYPES.DEPOSIT ? cashAmount : -cashAmount;
+      if (type === TX_TYPES.DEPOSIT) deposits += cashAmount; else removals += cashAmount;
+      if (storage === null) storage = tx.storage || '';
+      book(tx, type === TX_TYPES.DEPOSIT ? 'deposit' : 'removal', signed);
+      flows.push({ tx, date: toISO(tx.date), amount: signed, kind: type === TX_TYPES.DEPOSIT ? 'deposit' : 'removal' });
+    } else if (type === TX_TYPES.EARNINGS) {
+      const received = cashRow ? cashAmount : amount;
+      earnings += received;
+      book(tx, 'earnings', received);
+    } else if (cashRow) {
       continue;
+    } else if (type === TX_TYPES.BUY) {
+      const shortfall = amount - balance;
+      if (mode === 'implicit' && shortfall > 0) {
+        implicitDeposits += shortfall;
+        book(tx, 'implicit', shortfall);
+        flows.push({ tx, date: toISO(tx.date), amount: shortfall, kind: 'implicit' });
+      }
+      book(tx, 'buy', -amount);
+    } else if (type === TX_TYPES.SELL) {
+      book(tx, 'sell', amount);
     }
+  }
 
-    // ── Earnings on a security (dividend / coupon): cash in, cost basis untouched ──
-    if (transactionType === 'Cổ tức') {
-      ensureCash(storage);
-      holdingsMap['VNĐ_CASH'].qty += Math.abs(totalVND || 0);
-      continue;
-    }
+  return {
+    mode, rows, flows, balance,
+    netCapital: deposits - removals + implicitDeposits,
+    deposits, removals, implicitDeposits, earnings, minBalance,
+    storage: storage || '',
+  };
+}
 
-    // ── Asset transactions ──
-    const key = ticker;
-    if (!holdingsMap[key]) {
-      holdingsMap[key] = {
+// ============================================================
+// CALCULATE HOLDINGS
+// ============================================================
+
+/**
+ * Current holdings: one row per security (moving average cost) plus the
+ * VNĐ cash row, whose qty is the cash balance and totalCost the net capital.
+ */
+export function calculateHoldings(transactions) {
+  if (!transactions || transactions.length === 0) return [];
+
+  const holdingsMap = {};
+
+  for (const tx of sortTransactions(transactions)) {
+    const { transactionType, assetClass, quantity, totalVND, storage, currency } = tx;
+    const ticker = (tx.ticker || '').trim();
+    // cash rows, deposits / removals and earnings never change a position
+    if (isCashTicker(ticker)) continue;
+    if (transactionType !== TX_TYPES.BUY && transactionType !== TX_TYPES.SELL) continue;
+
+    if (!holdingsMap[ticker]) {
+      holdingsMap[ticker] = {
         ticker,
         assetClass: assetClass || 'Khác',
         qty: 0,
@@ -125,76 +205,70 @@ export function calculateHoldings(transactions) {
       };
     }
 
-    const entry = holdingsMap[key];
-    const qty  = Math.abs(quantity || 0);
-    const cost = Math.abs(totalVND || 0);
+    const entry = holdingsMap[ticker];
+    const qty  = Math.abs(Number(quantity) || 0);
+    const cost = Math.abs(Number(totalVND) || 0);
 
-    if (transactionType === 'Mua') {
+    if (transactionType === TX_TYPES.BUY) {
       entry.totalCost += cost;
       entry.qty       += qty;
       entry.avgCost    = entry.qty > 0 ? entry.totalCost / entry.qty : 0;
       if (storage) entry.storage = storage;
-
-      // Cash decreases (spent), but net capital is unchanged
-      if (holdingsMap['VNĐ_CASH']) {
-        holdingsMap['VNĐ_CASH'].qty = Math.max(0, holdingsMap['VNĐ_CASH'].qty - cost);
-        // FIX: do NOT touch .totalCost here
-      }
-    } else if (transactionType === 'Bán') {
-      const soldCostBasis = entry.avgCost * qty;
-      entry.qty       -= qty;
-      entry.totalCost -= soldCostBasis;
-      if (entry.qty <= 0.0001) {
+    } else {
+      // Sale at average cost: the average does not change, a larger sale closes the position
+      const soldQty = Math.min(qty, entry.qty);
+      entry.totalCost -= entry.avgCost * soldQty;
+      entry.qty       -= soldQty;
+      if (entry.qty <= EPS) {
         entry.qty = 0; entry.totalCost = 0; entry.avgCost = 0;
-      } else {
-        entry.avgCost = entry.totalCost / entry.qty;
-      }
-
-      // Cash increases (proceeds returned), but net capital is unchanged
-      if (holdingsMap['VNĐ_CASH']) {
-        holdingsMap['VNĐ_CASH'].qty += cost;
-        // FIX: do NOT touch .totalCost here
       }
     }
   }
 
-  // Keep VNĐ_CASH when qty > 0 (has cash) OR net capital > 0 (tracks deposits)
-  return Object.values(holdingsMap)
-    .filter(h => h.qty > 0.0001 || (h.ticker === 'VNĐ' && (h.totalCost > 0 || h.qty > 0.0001)))
-    .map(h => ({
-      ...h,
-      avgCost: h.ticker === 'VNĐ' ? 1 : (h.qty > 0 ? h.totalCost / h.qty : 0),
-    }));
+  const holdings = Object.values(holdingsMap)
+    .filter(h => h.qty > EPS)
+    .map(h => ({ ...h, avgCost: h.totalCost / h.qty }));
+
+  const cash = replayCash(transactions);
+  if (cash.rows.length && (Math.abs(cash.balance) > EPS || Math.abs(cash.netCapital) > EPS)) {
+    holdings.unshift({
+      ticker: 'VNĐ',
+      assetClass: 'Tiền mặt VNĐ',
+      qty: cash.balance,          // cash balance (negative = purchases without a recorded deposit)
+      totalCost: cash.netCapital, // net capital paid in
+      avgCost: 1,
+      storage: cash.storage,
+      currency: 'VNĐ',
+    });
+  }
+  return holdings;
 }
 
 // ============================================================
 // CALCULATE PORTFOLIO WITH MARKET PRICES
 // ============================================================
 
+const STABLECOIN_TICKERS = new Set(['USDT', 'USDC']);
+
+/**
+ * Value every holding. Prices are VND per unit. A holding without a market
+ * price is valued at its average cost; a stablecoin without a price of its own
+ * uses its exchange rate, then the USDT rate, then its average cost.
+ */
 export function calculatePortfolio(holdings, marketPrices = {}) {
-  // Get global USDT exchange rate
-  const usdtRate = marketPrices['USDT']?.exchangeRate || marketPrices['USDT']?.price || 1;
-  // Get global USDC exchange rate (fallback to USDT rate)
-  const usdcRate = marketPrices['USDC']?.exchangeRate || marketPrices['USDC']?.price || usdtRate;
-  // Gold-backed tokens that trade on crypto exchanges (priced in USDT)
-  const CRYPTO_GOLD_TICKERS = new Set(['PAXG', 'XAUT']);
-  // Stablecoins set
-  const STABLECOIN_TICKERS = new Set(['USDT', 'USDC']);
+  const usdtRate = marketPrices['USDT']?.price || marketPrices['USDT']?.exchangeRate || 0;
 
   return holdings.map(h => {
     const market = marketPrices[h.ticker] || {};
-    let marketPrice = market.price;
-    
-    let actualValue;
+    let marketPrice;
     if (h.ticker === 'VNĐ') {
-      actualValue = h.qty;
       marketPrice = 1;
-    } else if (h.ticker === 'USDT' || h.ticker === 'USDC') {
-      actualValue = h.qty * marketPrice; // For stablecoins, marketPrice IS the VND rate
+    } else if (STABLECOIN_TICKERS.has(h.ticker)) {
+      marketPrice = market.price || market.exchangeRate || usdtRate || h.avgCost;
     } else {
-      marketPrice = market.price || h.avgCost; // market.price is ALREADY in VND
-      actualValue = h.qty * marketPrice;
+      marketPrice = market.price || h.avgCost;
     }
+    const actualValue = h.qty * marketPrice;
 
     const pnl = actualValue - h.totalCost;
     const pnlPercent = h.totalCost > 0 ? (pnl / h.totalCost) * 100 : 0;
@@ -290,47 +364,25 @@ export function calculateRebalance(portfolio, targetWeights = {}) {
 
 export function calculateTotalPnL(portfolio, transactions = []) {
   /**
-   * True P&L = (total current value of ALL holdings incl. cash)
-   *           - (net capital deposited = sum of Nạp tiền - Rút tiền)
+   * Total P&L = (current value of ALL holdings incl. cash) − net capital
    *
-   * Priority:
-   *   1. VNĐ_CASH.totalCost > 0  → most accurate (deposit-tracking accounts)
-   *   2. Transaction log           → fallback for any account with Nạp tiền rows
-   *   3. Sum of cost-basis         → last resort (import-only, no deposit rows)
-   *
-   * NOTE: We deliberately ignore cashItem.totalCost when it is <= 0 to avoid
-   * displaying a negative "Tổng vốn đã đầu tư" after a user closes all
-   * positions and the cash register has not been reconciled.
+   * Net capital comes from the cash replay of the transaction log
+   * (deposits − removals, or the implicit deposits of a trades-only log).
+   * It can be ≤ 0 after withdrawing more than was paid in; the P&L is still
+   * value − capital, only the percentage is undefined (reported as 0).
+   * Without transactions: the cash row's net capital, else the cost basis.
    */
-  // 1. Total current portfolio value (assets + liquid cash)
-  const totalValue = portfolio.reduce((sum, p) => sum + p.actualValue, 0);
+  const totalValue = portfolio.reduce((sum, p) => sum + (Number.isFinite(p.actualValue) ? p.actualValue : 0), 0);
 
-  // 2. Derive net capital from transaction log first (always most reliable)
-  let txNetCapital = 0;
-  let hasCashFlowTx = false;
-  for (const t of transactions) {
-    const amt = Math.abs(t.totalVND || 0);
-    if (t.transactionType === 'Nạp tiền') { txNetCapital += amt; hasCashFlowTx = true; }
-    else if (t.transactionType === 'Rút tiền') { txNetCapital -= amt; hasCashFlowTx = true; }
-  }
-
-  // 3. Choose the best net-capital source
   const cashItem = portfolio.find(p => p.ticker === 'VNĐ');
   let netCapital;
-
-  if (hasCashFlowTx) {
-    // Transaction log is authoritative when deposit/withdrawal rows exist
-    netCapital = txNetCapital;
-  } else if (cashItem && cashItem.totalCost > 0) {
-    // Accounts without Nạp/Rút but with a tracked cash item
+  if (transactions && transactions.length) {
+    netCapital = replayCash(transactions).netCapital;
+  } else if (cashItem) {
     netCapital = cashItem.totalCost;
   } else {
-    // Last resort (import without deposits): use cost basis of all positions
     netCapital = portfolio.reduce((sum, p) => sum + p.totalCost, 0);
   }
-
-  // Guard: netCapital should never be negative (would mean more Rút than Nạp)
-  netCapital = Math.max(0, netCapital);
 
   const totalPnL        = totalValue - netCapital;
   const totalPnLPercent = netCapital > 0 ? (totalPnL / netCapital) * 100 : 0;
@@ -368,20 +420,6 @@ export function generateSnapshot(portfolio, externalAssets, liabilities, transac
 // ============================================================
 // HELPERS
 // ============================================================
-
-function parseVietnameseDate(dateStr) {
-  if (!dateStr) return new Date(0);
-  const parts = dateStr.split(' ');
-  const dateParts = (parts[0] || '').split('/');
-  const timeParts = (parts[1] || '00:00:00').split(':');
-  if (dateParts.length === 3) {
-    return new Date(
-      parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]),
-      parseInt(timeParts[0] || 0), parseInt(timeParts[1] || 0), parseInt(timeParts[2] || 0)
-    );
-  }
-  return new Date(dateStr);
-}
 
 export function parseVietnameseNumber(str) {
   if (!str || typeof str !== 'string') return parseFloat(str) || 0;
