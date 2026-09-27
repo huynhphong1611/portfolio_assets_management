@@ -40,7 +40,7 @@ export default function BarChart({ data = [], series = [], height = 240, valueFo
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={padding.left} x2={width - padding.right} y1={yScale(t)} y2={yScale(t)} stroke="var(--pp-border)" strokeWidth="1" />
-            <text x={padding.left - 8} y={yScale(t) + 4} textAnchor="end" className="chart-axis-label">{compactVND(t)}</text>
+            <text x={padding.left - 8} y={yScale(t) + 4} textAnchor="end" className="chart-axis-label">{compactVND(t, ticks.length > 1 ? ticks[1] - ticks[0] : null, Math.max(Math.abs(min), Math.abs(max)))}</text>
           </g>
         ))}
         {data.map((d, gi) => {

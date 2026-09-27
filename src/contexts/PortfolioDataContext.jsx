@@ -3,8 +3,9 @@ import { useAuth } from './AuthContext.jsx';
 import {
   apiGetTransactions, apiGetExternalAssets, apiGetRebalanceTargets,
   apiGetMarketPrices, apiGetLiabilities, apiGetSnapshots, apiSaveSnapshot,
-  apiGetBenchmarkHistory,
+  apiGetBenchmarkHistory, apiGetSecurities, apiGetAllSecurityPrices,
 } from '../services/api.js';
+import { resolveMarketPrices } from '../utils/priceResolver.js';
 import {
   calculateHoldings, calculatePortfolio, calculateNetWorth,
   calculateRebalance, calculateTotalPnL, generateSnapshot,
@@ -22,7 +23,7 @@ export function usePortfolioData() {
 
 const EMPTY = {
   transactions: [], externalAssets: [], rebalanceTargets: {},
-  marketPrices: {}, liabilities: [], snapshots: [],
+  marketPrices: {}, liabilities: [], snapshots: [], securities: [], userPrices: {},
 };
 
 /**
@@ -48,17 +49,20 @@ export function PortfolioDataProvider({ children }) {
     if (!currentUser) return;
     if (silent) setRefreshing(true); else setLoading(true);
     try {
-      const [txs, ext, targets, prices, debts, snaps] = await Promise.all([
+      const [txs, ext, targets, prices, debts, snaps, secs, ownPrices] = await Promise.all([
         apiGetTransactions().catch(() => []),
         apiGetExternalAssets().catch(() => []),
         apiGetRebalanceTargets().catch(() => ({})),
         apiGetMarketPrices().catch(() => ({})),
         apiGetLiabilities().catch(() => []),
         apiGetSnapshots().catch(() => []),
+        apiGetSecurities().catch(() => []),
+        apiGetAllSecurityPrices().catch(() => ({})),
       ]);
       setData({
         transactions: txs || [], externalAssets: ext || [], rebalanceTargets: targets || {},
         marketPrices: prices || {}, liabilities: debts || [], snapshots: snaps || [],
+        securities: secs || [], userPrices: ownPrices || {},
       });
       setLastUpdated(new Date());
       setError(null);
@@ -82,7 +86,15 @@ export function PortfolioDataProvider({ children }) {
   const refresh = useCallback(() => fetchAll({ silent: true }), [fetchAll]);
 
   // ── Derived data ──
-  const { transactions, externalAssets, rebalanceTargets, marketPrices, liabilities, snapshots } = data;
+  const { transactions, externalAssets, rebalanceTargets, liabilities, snapshots, securities, userPrices } = data;
+  const systemMarketPrices = data.marketPrices;
+  const today = todayISO();
+
+  // System prices overlaid with the user's own prices (MANUAL / JSON securities, gaps)
+  const marketPrices = useMemo(
+    () => resolveMarketPrices(systemMarketPrices, securities, userPrices, today),
+    [systemMarketPrices, securities, userPrices, today]
+  );
 
   const holdings = useMemo(() => calculateHoldings(transactions), [transactions]);
   const portfolio = useMemo(() => calculatePortfolio(holdings, marketPrices), [holdings, marketPrices]);
@@ -126,14 +138,16 @@ export function PortfolioDataProvider({ children }) {
 
   /** Re-fetch raw data from the backend, recompute and store today's snapshot. */
   const recomputeAndSnapshot = useCallback(async () => {
-    const [txs, ext, debts, prices] = await Promise.all([
+    const [txs, ext, debts, prices, secs, ownPrices] = await Promise.all([
       apiGetTransactions().catch(() => []),
       apiGetExternalAssets().catch(() => []),
       apiGetLiabilities().catch(() => []),
       apiGetMarketPrices().catch(() => ({})),
+      apiGetSecurities().catch(() => []),
+      apiGetAllSecurityPrices().catch(() => ({})),
     ]);
     const h = calculateHoldings(txs || []);
-    const p = calculatePortfolio(h, prices || {});
+    const p = calculatePortfolio(h, resolveMarketPrices(prices || {}, secs || [], ownPrices || {}, todayISO()));
     const snap = generateSnapshot(p, ext || [], debts || [], txs || []);
     const today = todayISO();
     await apiSaveSnapshot({ date: today, ...snap });
@@ -141,11 +155,12 @@ export function PortfolioDataProvider({ children }) {
   }, [refresh]);
 
   const value = {
-    // raw
-    transactions, externalAssets, rebalanceTargets, marketPrices, liabilities, snapshots, benchmarks,
+    // raw (marketPrices = system prices overlaid with the user's own prices)
+    transactions, externalAssets, rebalanceTargets, marketPrices, systemMarketPrices, liabilities, snapshots, benchmarks,
+    securities, userPrices,
     // derived
     holdings, portfolio, netWorth, pnlSummary, rebalanceData, replay, valueSeries, firstDate, usdtVndRate,
-    today: todayISO(),
+    today,
     // state
     loading, refreshing, error, lastUpdated,
     // actions

@@ -1,8 +1,9 @@
-import React from 'react';
-import { PlusCircle, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { PlusCircle, Download, Upload } from 'lucide-react';
 import { usePortfolioData } from '../contexts/PortfolioDataContext.jsx';
 import { PageHeader } from '../components/ui';
 import TransactionLog from '../components/TransactionLog.jsx';
+import ImportCSVModal from '../components/ImportCSVModal.jsx';
 import { parseVNDate } from '../utils/dates.js';
 
 const CSV_COLUMNS = [
@@ -25,6 +26,8 @@ function toCSV(transactions) {
 /** PP → Accounts → All Transactions */
 export default function TransactionsView() {
   const { transactions, loading, refresh, openTransactionModal } = usePortfolioData();
+  const [importOpen, setImportOpen] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   const exportCSV = () => {
     const blob = new Blob([toCSV(transactions)], { type: 'text/csv;charset=utf-8' });
@@ -45,12 +48,20 @@ export default function TransactionsView() {
         subtitle="All Transactions · nạp/rút, mua/bán và cổ tức, nhóm theo năm và tháng"
         actions={(
           <>
+            <button type="button" className="pp-btn" onClick={() => setImportOpen(true)}><Upload size={15} /> Nhập CSV</button>
             <button type="button" className="pp-btn" onClick={exportCSV} disabled={!transactions.length}><Download size={15} /> Xuất CSV</button>
             <button type="button" className="pp-btn pp-btn--primary" onClick={() => openTransactionModal()}><PlusCircle size={15} /> Thêm giao dịch</button>
           </>
         )}
       />
+      {notice && <div className="pp-alert pp-alert--ok">{notice}</div>}
       <TransactionLog transactions={transactions} loading={loading} onUpdate={refresh} onEdit={tx => openTransactionModal(tx)} />
+      <ImportCSVModal
+        mode="transactions"
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={async (res) => { await refresh(); setNotice(`Đã nhập ${res?.imported ?? 0} giao dịch${res?.duplicates?.length ? `, bỏ qua ${res.duplicates.length} giao dịch trùng` : ''}.`); }}
+      />
     </>
   );
 }

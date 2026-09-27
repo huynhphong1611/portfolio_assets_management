@@ -66,7 +66,9 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
       return { ...ds, points, linePath, areaPath };
     });
 
-    return { allX, yMin, yMax, yTicks, xLabels, paths, xScale };
+    const yStep = axis.ticks.length > 1 ? axis.ticks[1] - axis.ticks[0] : null;
+    const yMaxAbs = Math.max(Math.abs(yMin), Math.abs(yMax));
+    return { allX, yMin, yMax, yTicks, xLabels, paths, xScale, yStep, yMaxAbs };
   }, [datasets, chartW, chartH]);
 
   if (!processed) {
@@ -74,9 +76,15 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
   }
 
   const formatYTick = (val) => {
-    if (yLabel === 'vnd') return compactVND(val);
+    if (yLabel === 'vnd') return compactVND(val, processed.yStep, processed.yMaxAbs);
     if (yLabel === 'percent') return compactPct(val);
     return new Intl.NumberFormat('vi-VN').format(Math.round(val));
+  };
+
+  // Tooltips show exact values
+  const formatValue = (val) => {
+    if (yLabel === 'percent') return `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
+    return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: Math.abs(val) < 100 ? 2 : 0 }).format(val);
   };
 
   const hoveredPoints = hoveredIdx !== null
@@ -180,7 +188,7 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
               <span className="chart-tooltip-label">{processed.paths[i].label}</span>
               <span className="chart-tooltip-value">
                 {pt.rawStr && <span style={{ color: 'var(--text-color)', marginRight: '6px', fontSize: '11px' }}>{pt.rawStr}</span>}
-                <strong>{formatYTick(pt.val)}</strong>
+                <strong>{formatValue(pt.val)}</strong>
               </span>
             </div>
           ))}

@@ -101,3 +101,21 @@ export const fmtDuration = (days) => {
 
 /** CSS tone class for a signed number. */
 export const toneOf = (value) => (value > 0 ? 'pp-up' : value < 0 ? 'pp-down' : 'pp-flat');
+
+/**
+ * Read a number typed by the user: "8.450.000", "8,450,000", "25,5", "25.5".
+ * Dot groups of three are thousands (Vietnamese habit); returns NaN when invalid.
+ */
+export const parseInputNumber = (input) => {
+  let s = String(input ?? '').trim().replace(/[\s₫đ]/gi, '');
+  if (!s) return NaN;
+  const hasDot = s.includes('.'), hasComma = s.includes(',');
+  if (hasDot && hasComma) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (hasComma) {
+    s = /^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (hasDot && /^\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, '');
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+};

@@ -186,10 +186,6 @@ export async function apiGetMarketPrices() {
   return requestData('/prices/market');
 }
 
-export async function apiSaveMarketPrices(pricesMap) {
-  return requestData('/prices/market', { method: 'POST', body: { prices: pricesMap } });
-}
-
 export async function apiGetLatestDailyPrices() {
   return requestData('/prices/daily/latest');
 }
@@ -221,15 +217,60 @@ export async function apiGetSystemTickers() {
   return requestData('/prices/system-tickers');
 }
 
-export async function apiAddSystemTicker(category, ticker) {
-  return requestData('/prices/system-tickers', {
-    method: 'POST',
-    body: { category, ticker }
-  });
+
+// ── Securities API (the user's own master data, quote feeds and price history) ──
+
+export async function apiGetSecurities() {
+  return requestData('/securities');
 }
 
-export async function apiUserFetchLivePrices() {
-  return requestData('/prices/fetch-live', { method: 'POST' });
+export async function apiSaveSecurity(ticker, data) {
+  return requestData(`/securities/${encodeURIComponent(ticker)}`, { method: 'PUT', body: data });
+}
+
+export async function apiDeleteSecurity(ticker) {
+  return requestData(`/securities/${encodeURIComponent(ticker)}`, { method: 'DELETE' });
+}
+
+/** { TICKER: { "YYYY-MM-DD": close } } for every security with user prices. */
+export async function apiGetAllSecurityPrices() {
+  return requestData('/securities/prices');
+}
+
+export async function apiSaveSecurityPrices(ticker, prices, replace = false) {
+  return requestData(`/securities/${encodeURIComponent(ticker)}/prices`, { method: 'PUT', body: { prices, replace } });
+}
+
+export async function apiDeleteSecurityPrice(ticker, date) {
+  return requestData(`/securities/${encodeURIComponent(ticker)}/prices/${encodeURIComponent(date)}`, { method: 'DELETE' });
+}
+
+/** Try a JSON quote feed without saving: { count, latest, sample, excerpt }. */
+export async function apiTestQuoteFeed(feedURL, feedProperties) {
+  return requestData('/securities/feed/test', { method: 'POST', body: { feedURL, feedProperties } });
+}
+
+/** Download today's prices for the user's AUTO securities and JSON feeds. */
+export async function apiUpdateQuotes() {
+  return requestData('/securities/update-quotes', { method: 'POST' });
+}
+
+// ── Data import / export ──
+
+export async function apiImportTransactionsCSV(content, { numberFormat = 'auto', dryRun = true } = {}) {
+  return requestData('/data/import/transactions', { method: 'POST', body: { content, numberFormat, dryRun } });
+}
+
+export async function apiImportPricesCSV(content, { ticker = null, numberFormat = 'auto', replace = false, dryRun = true } = {}) {
+  return requestData('/data/import/prices', { method: 'POST', body: { content, ticker, numberFormat, replace, dryRun } });
+}
+
+export async function apiExportWorkspace() {
+  return requestData('/data/export');
+}
+
+export async function apiImportWorkspace(data, dryRun = true) {
+  return requestData('/data/import/workspace', { method: 'POST', body: { data, dryRun } });
 }
 
 // ── Snapshots API ──

@@ -18,6 +18,10 @@ describe('chart scale helpers', () => {
     expect(compactVND(1.5e9)).toBe('1.5 tỷ');
     expect(compactVND(20e6)).toBe('20 tr');
     expect(compactVND(-30e6)).toBe('−30 tr');
+    expect(compactVND(8.45e6, 5e4, 8.5e6)).toBe('8.45 tr');
+    expect(compactVND(8.4e6, 5e4, 8.5e6)).toBe('8.4 tr');
+    expect(compactVND(7.5e6, 2.5e6, 1e7)).toBe('7.5 tr');
+    expect(compactVND(2e8, 2e8, 1e9)).toBe('0.2 tỷ');
     expect(compactPct(50)).toBe('50%');
     expect(compactPct(12.5)).toBe('12.5%');
     expect(dateAxisLabel('2026-09-27', false)).toBe('27/09');

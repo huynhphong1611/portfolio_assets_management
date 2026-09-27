@@ -38,14 +38,23 @@ export function niceTicks(min, max, target = 4) {
 
 const trim = (s) => s.replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 
-/** 1.2 tỷ / 340 tr / 12k — VND axis labels. */
-export function compactVND(val) {
-  const abs = Math.abs(val);
+/** Decimals needed to write `x` exactly (max 3). */
+function decimalsOf(x) {
+  const s = String(+x.toFixed(6));
+  return s.includes('.') ? Math.min(3, s.split('.')[1].length) : 0;
+}
+
+/**
+ * 1.2 tỷ / 340 tr / 12k — VND axis labels.
+ * Pass the axis `step` and largest absolute tick so every label uses the same
+ * unit and just enough decimals to stay distinct (8.45 tr, 8.5 tr …).
+ */
+export function compactVND(val, step = null, maxAbs = null) {
+  const ref = Math.abs(maxAbs ?? val);
+  const [unit, suffix, defaultDecimals] = ref >= 1e9 ? [1e9, ' tỷ', 2] : ref >= 1e6 ? [1e6, ' tr', 1] : ref >= 1e3 ? [1e3, 'k', 0] : [1, '', 0];
+  const decimals = step ? decimalsOf(step / unit) : defaultDecimals;
   const sign = val < 0 ? '−' : '';
-  if (abs >= 1e9) return `${sign}${trim((abs / 1e9).toFixed(2))} tỷ`;
-  if (abs >= 1e6) return `${sign}${trim((abs / 1e6).toFixed(1))} tr`;
-  if (abs >= 1e3) return `${sign}${trim((abs / 1e3).toFixed(0))}k`;
-  return `${sign}${trim(abs.toFixed(0))}`;
+  return `${sign}${trim((Math.abs(val) / unit).toFixed(decimals))}${suffix}`;
 }
 
 /** 12% / 12.5% — percent axis labels. */
