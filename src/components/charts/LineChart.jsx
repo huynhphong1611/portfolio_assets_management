@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
+import { niceTicks, compactVND, compactPct, dateAxisLabel, dateTooltipLabel, isLongRange } from './scale.js';
+import { useChartWidth } from './useChartWidth.js';
 
 /**
  * Professional SVG Line Chart
@@ -9,9 +11,10 @@ import React, { useMemo, useState, useRef } from 'react';
 export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd', title }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
   const svgRef = useRef(null);
+  const [containerRef, width] = useChartWidth(800);
+  const compact = width < 520;
 
-  const padding = { top: 20, right: 20, bottom: 40, left: 80 };
-  const width = 800;
+  const padding = { top: 20, right: compact ? 10 : 20, bottom: 40, left: compact ? 52 : 80 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
@@ -27,28 +30,25 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
       });
     });
 
-    // Add 10% padding to y range
-    const yRange = yMax - yMin || 1;
-    const trueMin = yMin - yRange * 0.1;
-    yMin = yMin >= 0 && trueMin < 0 ? 0 : trueMin;
-    yMax = yMax + yRange * 0.1;
+    // "Nice" axis bounds (0, 50, 100 … instead of arbitrary values)
+    const axis = niceTicks(yMin, yMax, 4);
+    yMin = axis.min;
+    yMax = axis.max;
 
     const xScale = (i) => padding.left + (i / Math.max(allX.length - 1, 1)) * chartW;
     const yScale = (val) => padding.top + chartH - ((val - yMin) / (yMax - yMin)) * chartH;
 
-    // Y-axis ticks (5 ticks)
-    const yTicks = [];
-    for (let i = 0; i <= 4; i++) {
-      const val = yMin + (yMax - yMin) * (i / 4);
-      yTicks.push({ val, y: yScale(val) });
-    }
+    const yTicks = axis.ticks.map(val => ({ val, y: yScale(val) }));
+    const longRange = isLongRange(allX[0], allX[allX.length - 1]);
+    const formatDateLabel = (label) => dateAxisLabel(label, longRange);
 
-    // X-axis labels (max 8)
-    const step = Math.max(1, Math.floor(allX.length / 7));
+    // X-axis labels — as many as fit (~90px each)
+    const maxLabels = Math.max(2, Math.floor(chartW / 90));
+    const step = Math.max(1, Math.floor(allX.length / maxLabels));
     const xLabels = [];
     allX.forEach((label, i) => {
       if (i === 0 || i === allX.length - 1) {
-        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i), anchor: i === 0 ? 'start' : 'end' });
       } else if (i % step === 0 && (allX.length - 1 - i) >= step * 0.6) {
         xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
       }
@@ -66,22 +66,25 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
       return { ...ds, points, linePath, areaPath };
     });
 
-    return { allX, yMin, yMax, yTicks, xLabels, paths, xScale };
+    const yStep = axis.ticks.length > 1 ? axis.ticks[1] - axis.ticks[0] : null;
+    const yMaxAbs = Math.max(Math.abs(yMin), Math.abs(yMax));
+    return { allX, yMin, yMax, yTicks, xLabels, paths, xScale, yStep, yMaxAbs };
   }, [datasets, chartW, chartH]);
 
   if (!processed) {
-    return <div className="chart-empty">Chưa có dữ liệu biểu đồ</div>;
+    return <div ref={containerRef} className="chart-empty">Chưa có dữ liệu biểu đồ</div>;
   }
 
   const formatYTick = (val) => {
-    if (yLabel === 'vnd') {
-      if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(1) + ' tỷ';
-      if (Math.abs(val) >= 1e6) return (val / 1e6).toFixed(1) + ' tr';
-      if (Math.abs(val) >= 1e3) return (val / 1e3).toFixed(0) + 'k';
-      return val.toFixed(0);
-    }
-    if (yLabel === 'percent') return val.toFixed(1) + '%';
+    if (yLabel === 'vnd') return compactVND(val, processed.yStep, processed.yMaxAbs);
+    if (yLabel === 'percent') return compactPct(val);
     return new Intl.NumberFormat('vi-VN').format(Math.round(val));
+  };
+
+  // Tooltips show exact values
+  const formatValue = (val) => {
+    if (yLabel === 'percent') return `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
+    return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: Math.abs(val) < 100 ? 2 : 0 }).format(val);
   };
 
   const hoveredPoints = hoveredIdx !== null
@@ -89,7 +92,7 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
     : [];
 
   return (
-    <div className="line-chart-container">
+    <div ref={containerRef} className="line-chart-container">
       {title && <h4 className="chart-title">{title}</h4>}
       <svg
         ref={svgRef}
@@ -125,7 +128,7 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
 
         {/* X-axis labels */}
         {processed.xLabels.map((l, i) => (
-          <text key={i} x={l.x} y={height - 8} textAnchor="middle" className="chart-axis-label">
+          <text key={i} x={l.x} y={height - 8} textAnchor={l.anchor || 'middle'} className="chart-axis-label">
             {l.label}
           </text>
         ))}
@@ -178,14 +181,14 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
       {/* Tooltip */}
       {hoveredIdx !== null && hoveredPoints.length > 0 && (
         <div className="chart-tooltip">
-          <div className="chart-tooltip-date">{hoveredPoints[0]?.label}</div>
+          <div className="chart-tooltip-date">{dateTooltipLabel(hoveredPoints[0]?.label)}</div>
           {hoveredPoints.map((pt, i) => (
             <div key={i} className="chart-tooltip-row">
               <span className="chart-tooltip-dot" style={{ background: processed.paths[i].color }}></span>
               <span className="chart-tooltip-label">{processed.paths[i].label}</span>
               <span className="chart-tooltip-value">
                 {pt.rawStr && <span style={{ color: 'var(--text-color)', marginRight: '6px', fontSize: '11px' }}>{pt.rawStr}</span>}
-                <strong>{formatYTick(pt.val)}</strong>
+                <strong>{formatValue(pt.val)}</strong>
               </span>
             </div>
           ))}
@@ -205,9 +208,3 @@ export default function LineChart({ datasets = [], height = 280, yLabel = 'vnd',
   );
 }
 
-function formatDateLabel(dateStr) {
-  if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-  return dateStr.substring(0, 5);
-}

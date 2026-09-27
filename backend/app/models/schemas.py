@@ -36,7 +36,7 @@ class AuthResponse(BaseModel):
 
 class TransactionCreate(BaseModel):
     date: str
-    transactionType: Literal["Mua", "Bán", "Nạp tiền", "Rút tiền"]
+    transactionType: Literal["Mua", "Bán", "Nạp tiền", "Rút tiền", "Cổ tức"]
     assetClass: Literal["Tiền mặt VNĐ", "Tiền mặt USD", "Trái phiếu", "Cổ phiếu", "Tài sản mã hóa", "Vàng"]
     # Allow empty ticker for cash-only tx (Rút tiền / Nạp tiền)
     ticker: str = Field(default="", max_length=20, pattern=r"^[A-Za-z0-9À-ỹ\-\_]*$")
@@ -82,12 +82,6 @@ class LiabilityUpdate(BaseModel):
     type: Optional[str] = None
     interestRate: Optional[float] = None
     notes: Optional[str] = None
-
-
-# ── Market Prices ──
-
-class MarketPricesUpdate(BaseModel):
-    prices: dict  # {ticker: {price, exchangeRate?, ...}} map
 
 
 # ── Snapshot ──

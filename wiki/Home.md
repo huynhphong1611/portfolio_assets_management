@@ -16,6 +16,8 @@ Portfolio Manager là ứng dụng quản lý tài sản đầu tư cá nhân to
 - **Stablecoin (USDT/USDC)** — Tỷ giá VNĐ qua CoinGecko
 - **Tài sản ngoài danh mục** — TOPI, tiền gửi ngân hàng, bất động sản
 - **Nợ phải trả** — Khoản vay, thẻ tín dụng
+- **Tài sản không có API** (vàng nhẫn, trái phiếu riêng lẻ…) — nhập giá tay, import CSV hoặc nguồn JSON tùy chỉnh
+- **Báo cáo hiệu suất kiểu Portfolio Performance** — TTWROR, IRR, delta, max drawdown, biến động, cổ tức, lệnh lãi/lỗ, tái cân bằng theo kỳ báo cáo
 
 ## 🏗️ Tech Stack
 
@@ -47,6 +49,8 @@ Portfolio Manager là ứng dụng quản lý tài sản đầu tư cá nhân to
 - [[API Authentication]] — Luồng xác thực JWT & Firebase
 
 ### ⚙️ Tính năng
+- [[Feature Performance Reports]] — Báo cáo kiểu Portfolio Performance: TTWROR, IRR, drawdown, cổ tức, tái cân bằng
+- [[Feature User Securities]] — Chứng khoán và giá của riêng bạn: nhập tay, nguồn JSON, import CSV, sao lưu
 - [[Feature Price Service]] — Hệ thống lấy giá đa nguồn
 - [[Feature Snapshot Engine]] — Chụp nhanh danh mục hàng ngày
 - [[Feature Scheduler]] — Lịch trình tự động 9h sáng

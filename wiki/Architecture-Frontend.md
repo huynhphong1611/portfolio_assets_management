@@ -7,109 +7,131 @@
 | **React 18** | UI framework |
 | **Vite 5** | Build tool & dev server |
 | **Lucide Icons** | Icon library |
-| **Recharts** | Charts & visualizations |
+| **SVG tự viết** | Biểu đồ đường, cột, vùng xếp chồng, donut, heatmap (không dùng thư viện chart) |
 | **Firebase SDK** | Authentication |
-| **Vanilla CSS** | Styling (dark theme) |
+| **Vanilla CSS** | `src/index.css` (nền tảng, admin, form) + `src/styles/pp.css` (workspace kiểu Portfolio Performance) |
+| **Vitest** | Unit test cho engine tính toán |
 
 ## Cấu trúc thư mục
 
 ```
 src/
-├── App.jsx                        # Main app — Tab navigation, routing logic
-├── main.jsx                       # Entry point — render App
+├── main.jsx                       # Entry — /admin → AdminApp, còn lại → App
+├── App.jsx                        # Cổng đăng nhập + providers + AppShell
 ├── firebase.js                    # Firebase SDK initialization
-├── index.css                      # Global styles (dark theme, 67KB)
+├── index.css                      # Styles nền tảng (login, admin, modal, form)
+├── styles/pp.css                  # Workspace: sidebar dạng cây, toolbar, bảng báo cáo
 │
-├── components/
-│   ├── AddTransactionModal.jsx    # Modal thêm giao dịch mua/bán
-│   ├── TransactionLog.jsx         # Bảng lịch sử giao dịch (filter, sort)
-│   ├── FundManager.jsx            # Quản lý quỹ đầu tư ảo
-│   ├── SystemPricesBoard.jsx      # Bảng giá hệ thống (đọc từ admin)
-│   ├── RebalanceSettings.jsx      # Cài đặt mục tiêu phân bổ tài sản
-│   ├── NetWorthExternalManager.jsx # Quản lý tài sản ngoài danh mục
-│   ├── LiabilitiesManager.jsx     # Quản lý nợ phải trả
-│   ├── HistoricalSnapshotModal.jsx # Modal backfill snapshot lịch sử
-│   ├── AssetAllocationChart.jsx   # Biểu đồ phân bổ tài sản (donut)
-│   ├── CumulativePerformanceChart.jsx # Biểu đồ hiệu suất tích luỹ
-│   │
-│   ├── Auth/
-│   │   └── Login.jsx              # Trang đăng nhập (Firebase + Guest)
-│   │
-│   ├── Admin/
-│   │   └── ...                    # Admin Portal components
-│   │
-│   └── charts/
-│       └── ...                    # Chart sub-components
-│
-├── pages/
-│   └── AdminApp.jsx               # Admin Portal page
-│
-├── services/
-│   ├── api.js                     # API client (JWT auth, REST calls)
-│   ├── adminApi.js                # Admin API client
-│   └── firestoreService.js        # Direct Firestore operations
+├── router/
+│   ├── routes.js                  # Cây điều hướng (Dữ liệu chung / Tài khoản / Báo cáo / Phân loại)
+│   └── useHashRoute.jsx           # Hash router tối giản + <Link>
 │
 ├── contexts/
-│   └── AuthContext.jsx            # React Context — auth state management
+│   ├── AuthContext.jsx            # Trạng thái đăng nhập (Firebase + Guest)
+│   ├── PortfolioDataContext.jsx   # Dữ liệu danh mục + dữ liệu dẫn xuất + modal giao dịch
+│   ├── ReportingPeriodContext.jsx # Kỳ báo cáo dùng chung
+│   └── AdminAuthContext.jsx
+│
+├── layout/
+│   ├── AppShell.jsx               # Sidebar + Toolbar + màn hình đang mở + modal giao dịch
+│   ├── Sidebar.jsx                # Cây điều hướng (ngăn kéo trên mobile)
+│   ├── Toolbar.jsx                # Breadcrumb, kỳ báo cáo, làm mới, thêm giao dịch
+│   └── PeriodPicker.jsx
+│
+├── views/                         # Một file cho mỗi màn hình (xem Feature Performance Reports)
+│   ├── DashboardView.jsx
+│   ├── SecuritiesView.jsx         # Chứng khoán của user: nguồn giá, giá nhập tay, nguồn JSON
+│   ├── ExchangeRatesView.jsx
+│   ├── SecuritiesAccountsView.jsx · DepositAccountsView.jsx · OtherAssetsView.jsx · TransactionsView.jsx
+│   ├── StatementOfAssetsView.jsx
+│   ├── performance/               # Calculation · Chart · Securities · Payments · Trades
+│   ├── taxonomies/                # AssetClasses (định nghĩa, biểu đồ, lịch sử, tái cân bằng) · Storage
+│   ├── SettingsView.jsx
+│   └── index.js                   # Bảng route → component
+│
+├── components/
+│   ├── ui/                        # Card, Kpi, DataTable, Tabs, PageHeader, Badge, Empty
+│   ├── charts/                    # LineChart, BarChart, StackedAreaChart, PerformanceChart, AssetChart, scale.js
+│   ├── widgets/HeatmapWidget.jsx  # Lợi nhuận theo tháng
+│   ├── AddTransactionModal.jsx    # Nạp / Rút / Mua / Bán / Cổ tức
+│   ├── ImportCSVModal.jsx         # Import CSV giao dịch / lịch sử giá, xem trước trước khi ghi
+│   ├── TransactionLog.jsx         # Nhật ký giao dịch nhóm theo năm/tháng
+│   ├── NetWorthExternalManager.jsx · LiabilitiesManager.jsx
+│   ├── RebalanceSettings.jsx · HistoricalSnapshotModal.jsx · AssetAllocationChart.jsx
+│   ├── Auth/Login.jsx
+│   └── Admin/…                    # Admin Portal
+│
+├── hooks/
+│   ├── usePeriodReport.js         # Báo cáo hiệu suất cho kỳ đang chọn
+│   └── useDailyPriceHistory.js    # Lịch sử giá hệ thống theo mã
+│
+├── services/
+│   ├── api.js                     # API client (JWT, REST)
+│   ├── adminApi.js
+│   └── (api.js: securities, import CSV, sao lưu/khôi phục)
 │
 └── utils/
-    ├── portfolioCalculator.js     # Client-side portfolio calculations
-    └── formatters.js              # Number & currency formatting (VNĐ)
+    ├── portfolioCalculator.js     # Holdings, định giá, tài sản ròng, P&L, snapshot
+    ├── performanceEngine.js       # TTWROR, IRR, drawdown, biến động, trades…
+    ├── accounts.js                # Sổ quỹ tiền mặt, vị thế theo nơi lưu ký
+    ├── priceResolver.js           # Giá hệ thống + giá riêng của user theo nguồn giá
+    ├── csvTemplates.js            # File CSV mẫu
+    ├── assetClasses.js            # Màu, thứ tự, nhãn loại tài sản
+    ├── reportingPeriod.js · dates.js · formatters.js
 ```
 
-## App.jsx — Component chính
+## Luồng dữ liệu
 
-`App.jsx` là trung tâm điều khiển với hệ thống **tab navigation**:
+```
+AuthProvider
+ └─ App ──(chưa đăng nhập)──▶ Login
+     └─ PortfolioDataProvider      tải transactions, snapshots, marketPrices, externalAssets,
+        │                          liabilities, rebalance targets, benchmarks (một lần)
+        │                          → holdings, portfolio, netWorth, replay giao dịch…
+        └─ ReportingPeriodProvider kỳ báo cáo → { start, end }
+            └─ AppShell            route hiện tại → view tương ứng
+                └─ View            usePeriodReport() → computePeriodReport(snapshots, transactions, kỳ)
+```
 
-| Tab | Component | Mô tả |
-|-----|-----------|--------|
-| 🏠 Dashboard | _(inline)_ | Net Worth, Assets vs Liabilities, Growth chart |
-| 💼 Portfolio | _(inline)_ | Holdings table, P&L, Asset allocation chart |
-| 📋 Transactions | `TransactionLog` | Lịch sử giao dịch, filter theo loại/ticker |
-| 💰 Funds | `FundManager` | Quản lý quỹ ảo (Conservative, Growth...) |
-| 📊 Prices | `SystemPricesBoard` | Bảng giá, trigger fetch giá mới |
-| ⚖️ Rebalance | `RebalanceSettings` | Target allocation percentages |
-| 🏦 External | `NetWorthExternalManager` | Tài sản ngoài (TOPI, deposits) |
-| 💳 Liabilities | `LiabilitiesManager` | Khoản vay, thẻ tín dụng |
+- Mọi màn hình đọc dữ liệu từ context, không tự gọi API trùng lặp (trừ lịch sử giá hệ thống).
+- Context tải cả chứng khoán và giá riêng của user; `marketPrices` là giá hệ thống đã chồng giá riêng theo `priceResolver.js`, `systemMarketPrices` là giá gốc.
+- Sau khi thêm/sửa/xóa, view gọi `refresh()` để tải lại dữ liệu.
+- Modal giao dịch là toàn cục: `openTransactionModal(tx?)` từ bất kỳ màn hình nào.
+- Snapshot hôm nay được tự lưu khi mở ứng dụng nếu chưa có (theo ngày địa phương).
+
+## Định tuyến
+
+Hash router (`#/reports/performance/chart`) để không cần cấu hình rewrite phía server. `matchRoute()` tìm route dài nhất khớp với đường dẫn, phần còn lại (VD `holdings`, `rebalance`) là tab bên trong màn hình.
 
 ## Luồng Authentication
 
 ```
 User mở app
   │
-  ├── Đã login? → Load dashboard data
+  ├── Đã login? → Load dữ liệu danh mục → AppShell
   │
   └── Chưa login? → Hiện Login.jsx
-       │
-       ├── Firebase Auth (Google/Email)
-       │   → signInWithPopup/signInWithEmailPassword
-       │   → POST /api/auth/firebase/verify (ID token)
-       │   → Nhận JWT session token
-       │
-       └── Guest Auth
-           → POST /api/auth/guest/login (username + password)
-           → Backend verify SHA-256 hash
-           → Nhận JWT session token
+       ├── Firebase Auth → POST /api/auth/firebase/verify → JWT session token
+       └── Guest Auth    → POST /api/auth/guest/login     → JWT session token
 ```
 
 ## API Client (`api.js`)
 
 - Tự động gắn `Authorization: Bearer <JWT>` vào mọi request
 - Base URL: `/api` (proxy qua Vite dev server hoặc Firebase Hosting rewrite)
-- Xử lý lỗi 401 → logout tự động
 - Hỗ trợ cả Firebase user (`system_users`) và Guest user (`guest_users`)
 
-## Styling
+## Giao diện
 
-- **Dark theme** là mặc định — gradient tím/xanh
-- File `index.css` ~67KB chứa toàn bộ styles
-- Responsive design cho mobile
-- Sử dụng CSS variables cho theming
+- Theme sáng kiểu ứng dụng desktop: sidebar xám nhạt, bảng dày thông tin, số căn phải dạng `tabular-nums`, lãi màu xanh, lỗ màu đỏ.
+- Responsive: dưới 860px sidebar thành ngăn kéo, lưới 4 cột thành 2 cột; biểu đồ tự đo bề rộng khung chứa.
+- Admin Portal (`/admin`) giữ giao diện riêng trong `index.css`.
 
 ---
 
 ## Xem thêm
 
+- [[Feature Performance Reports]] — Báo cáo và công thức hiệu suất
 - [[Architecture Overview]] — Tổng quan hệ thống
 - [[Architecture Backend]] — Backend FastAPI
 - [[API Reference]] — API endpoints

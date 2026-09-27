@@ -1,13 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Trash2, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, FileDown, Edit, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Search, ChevronRight, ArrowUpDown, Edit, ChevronDown } from 'lucide-react';
 import { apiDeleteTransaction } from '../services/api';
 import { formatVND, formatNum, formatQty } from '../utils/formatters';
+import { TxTypeBadge } from './ui/Badge.jsx';
 
-const TX_TYPE_STYLES = {
-  'Nạp tiền': { bg: 'var(--color-emerald-100)', color: 'var(--color-emerald-700)', label: 'N' },
-  'Mua': { bg: 'var(--color-blue-100)', color: 'var(--color-blue-700)', label: 'M' },
-  'Bán': { bg: 'var(--color-rose-100)', color: 'var(--color-rose-700)', label: 'B' },
-};
+const TX_TYPE_OPTIONS = ['Nạp tiền', 'Rút tiền', 'Mua', 'Bán', 'Cổ tức'];
 
 /**
  * Parse Vietnamese date "dd/mm/yyyy HH:MM:SS" → { year, month, day, Date }
@@ -154,17 +151,11 @@ export default function TransactionLog({ transactions = [], loading = false, onU
   };
 
   const renderTxRow = (tx) => {
-    const typeStyle = TX_TYPE_STYLES[tx.transactionType] || TX_TYPE_STYLES['Mua'];
     return (
       <tr key={tx.id} className="table-row-hover">
         <td className="td-date">{tx.date}</td>
         <td>
-          <span
-            className="tx-badge"
-            style={{ background: typeStyle.bg, color: typeStyle.color }}
-          >
-            {tx.transactionType}
-          </span>
+          <TxTypeBadge type={tx.transactionType} />
         </td>
         <td className="td-muted">{tx.assetClass}</td>
         <td className="td-ticker">{tx.ticker}</td>
@@ -186,7 +177,8 @@ export default function TransactionLog({ transactions = [], loading = false, onU
             <span className="notes-text">{tx.notes}</span>
           ) : '—'}
         </td>
-        <td className="text-center" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+        <td className="text-center">
+          <div className="pp-row-actions pp-row-actions--center">
           <button
             className="btn-icon"
             onClick={() => onEdit(tx)}
@@ -201,6 +193,7 @@ export default function TransactionLog({ transactions = [], loading = false, onU
           >
             <Trash2 size={14} />
           </button>
+          </div>
         </td>
       </tr>
     );
@@ -208,15 +201,6 @@ export default function TransactionLog({ transactions = [], loading = false, onU
 
   return (
     <div className="animate-fade-in">
-      <header className="section-header">
-        <div>
-          <h2 className="section-title">Nhật ký Giao dịch</h2>
-          <p className="section-subtitle">
-            Lịch sử giao dịch chi tiết — {filtered.length} giao dịch
-          </p>
-        </div>
-      </header>
-
       {/* Filters */}
       <div className="filters-bar glass-card">
         <div className="filter-search">
@@ -237,9 +221,7 @@ export default function TransactionLog({ transactions = [], loading = false, onU
             onChange={e => { setFilterType(e.target.value); }}
           >
             <option value="all">Tất cả loại GD</option>
-            <option value="Nạp tiền">Nạp tiền</option>
-            <option value="Mua">Mua</option>
-            <option value="Bán">Bán</option>
+            {TX_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
 
           <select
@@ -252,6 +234,7 @@ export default function TransactionLog({ transactions = [], loading = false, onU
               <option key={ac} value={ac}>{ac}</option>
             ))}
           </select>
+          <span className="pp-meta pp-filter-count">{filtered.length} giao dịch</span>
         </div>
       </div>
 

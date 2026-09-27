@@ -16,6 +16,8 @@
 - [[API Authentication]]
 
 ### ⚙️ Tính năng
+- [[Feature Performance Reports]]
+- [[Feature User Securities]]
 - [[Feature Price Service]]
 - [[Feature Snapshot Engine]]
 - [[Feature Scheduler]]
@@ -30,4 +32,4 @@
 - [[Changelog]]
 
 ---
-_Cập nhật: 2026-05-02_
+_Cập nhật: 2026-09-27_

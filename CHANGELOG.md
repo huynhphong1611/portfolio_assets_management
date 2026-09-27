@@ -2,6 +2,64 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-27] — formula audit
+### Fixed
+- **cash**: A purchase larger than the cash balance no longer floors the balance at 0. The floor created cash that did not exist (7.2M VND on a real log whose purchases were entered minutes before their deposits) and the same amount of phantom profit. The balance may now go negative and is reported instead.
+- **pnl**: Total P&L is value − net capital with no clamp at 0, so withdrawing more than was deposited keeps the profit. Net capital, the cash balance and the TTWROR/IRR cash flows come from one cash replay (`replayCash` / `replay_cash`) shared by the Statement of Assets, the Deposit Accounts ledger and the performance engine.
+- **pnl**: A trades-only log (no deposits) counts purchases beyond the available cash as implicit capital, so realized gains and dividends are part of the total P&L and purchases are not counted as performance.
+- **trades**: A sale larger than the position only realizes the quantity held; the excess no longer shows up as realized profit (USDT on the audited log: 76,340 instead of 210,318 VND).
+- **valuation**: A stablecoin without a price is valued at its rate, the USDT rate, then its average cost (JS showed NaN for the whole portfolio, Python used 1 VND per USDT).
+- **transactions**: Deposit and withdrawal rows always move VNĐ cash; holdings and net capital no longer disagree when such a row carries a ticker.
+- **accounts**: Storage names are matched case-insensitively ("Binance" / "binance"); a sale larger than its account's position takes the rest from the other accounts, so per-account quantities add up to the holdings.
+- **form**: Sale validation and the realized P&L preview use the average cost and quantity on the transaction's own date, and block edits that would leave any later sale without enough quantity.
+- **export**: The CSV export writes the realized P&L the engine computes instead of the value stored when the row was entered.
+
+### Added
+- **checks**: `dataChecks.js` lists oversold sales, negative cash periods (with the row that covered them), storage spellings and unusable rows, on All Transactions, Deposit Accounts and the Dashboard.
+- **tests**: JS and pytest cases for the cash replay, average cost, oversold sales, implicit capital and the data checks.
+
+### Changed
+- **docs**: The engine is documented as moving average cost (the docs claimed FIFO), with the cash and P&L formulas.
+
+## [2026-09-27] — user-owned securities & data
+### Added
+- **securities**: Per-user securities and price history (`securities/{ticker}`, `securityPrices/{ticker}`) with Portfolio Performance style quote feeds: `AUTO` (system prices), `MANUAL` (entered or imported by the user), `GENERIC-JSON` (URL + JSONPath + factor). New `/api/securities` router and a security editor in the All Securities view (feed configuration, feed test, manual prices, missing-price warnings).
+- **feeds**: `quote_feed_service.py` downloads JSON feeds with SSRF guards (public IPs only, default ports, no redirects, 1 MB / 10 s limits) and a JSONPath subset.
+- **import**: Backend CSV import for transactions and historical prices with dry-run preview, per-row errors, duplicate detection, Vietnamese and international number formats; reads the legacy Google Form sheet and the app's own export.
+- **backup**: Full workspace export and idempotent restore (`/api/data/export`, `/api/data/import/workspace`).
+- **tests**: Backend pytest suite running without Firebase; frontend tests for the price resolver.
+
+### Changed
+- **valuation**: Frontend, scheduler, snapshot backfill and dashboard value holdings with system prices overlaid by the user's own prices (MANUAL/JSON win, AUTO only fills gaps).
+- **scheduler**: The ticker universe includes every user's AUTO securities; JSON feeds are refreshed per user before snapshots.
+- **prices**: System daily prices are merged per date instead of overwritten.
+
+### Security
+- **prices**: Removed `POST /api/prices/market` and `POST /api/prices/system-tickers`, which let any signed-in user overwrite shared prices and tickers. `POST /api/prices/fetch-live` now only fetches the caller's own AUTO tickers.
+
+### Removed
+- **import**: The client-side CSV import with hard-coded data (`src/scripts/importCSV.js`, `src/services/firestoreService.js`); it wrote to Firestore from the browser and was blocked for guest users.
+
+## [2026-09-27]
+### Changed
+- **ui**: Restructured the whole user app after Portfolio Performance: navigation tree (General Data / Accounts / Reports / Taxonomies), global reporting period, hash routes for every view, flat desktop-style theme (`src/styles/pp.css`), responsive drawer on mobile.
+- **architecture**: Split the 650-line `App.jsx` into `PortfolioDataContext`, `ReportingPeriodContext`, `layout/` and one component per view under `src/views/`.
+- **charts**: Charts measure their container width, use round axis ticks and month/year labels on long ranges.
+
+### Added
+- **performance**: `performanceEngine.js` with TTWROR, IRR, absolute change, delta, max drawdown (+ duration), volatility, semi-volatility, monthly/yearly returns, trades and per-security performance.
+- **reports**: Statement of Assets, Performance (Calculation, Chart with Returns/Volatility, Securities, Payments, Trades), Securities and Deposit Accounts (running cash balance), All Securities with price history, Exchange Rates, Asset Classes taxonomy with rebalancing amounts, custodian taxonomy, CSV export of transactions.
+- **transactions**: New `Cổ tức` type (dividends, coupons, interest) in the JS engine, the Python engine and the API schema.
+- **api**: `GET /api/prices/daily` accepts `limit` (1–1000).
+
+### Fixed
+- **transactions**: Editing a `Rút tiền` transaction no longer opens with an empty amount.
+- **snapshots**: Snapshots created by the app use the local calendar date instead of the UTC date.
+- **tests**: Mock market prices now use VND (as stored by the backend); the 2 previously failing calculator tests pass.
+
+### Removed
+- **ui**: `CumulativePerformanceChart` and `SystemPricesBoard`, replaced by the Performance Chart and All Securities views.
+
 ## [2026-05-03]
 ### Fixed
 - **api**: Fixed 422 Unprocessable Entity error when selling USDC or performing cash transactions. Updated schema to support USDC currency, negative quantities for sales, and optional tickers for deposits/withdrawals. [AI: Gemini 3 Flash]

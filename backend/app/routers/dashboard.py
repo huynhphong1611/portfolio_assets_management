@@ -28,11 +28,20 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
     rebalance_targets = fs.get_rebalance_targets(user_id, user_type)
     funds = fs.get_funds(user_id, user_type)
 
+    # Overlay the user's own prices (MANUAL / GENERIC-JSON securities, gaps)
+    from datetime import datetime
+    market_prices = ps.apply_user_prices(
+        market_prices,
+        fs.get_securities(user_id, user_type),
+        fs.get_security_prices(user_id, user_type),
+        datetime.now().strftime("%Y-%m-%d"),
+    )
+
     # Calculate
     holdings = ps.calculate_holdings(transactions)
     portfolio = ps.calculate_portfolio(holdings, market_prices)
     net_worth = ps.calculate_net_worth(portfolio, external_assets, liabilities)
-    pnl_summary = ps.calculate_total_pnl(portfolio)
+    pnl_summary = ps.calculate_total_pnl(portfolio, transactions)
     rebalance_data = ps.calculate_rebalance(portfolio, rebalance_targets)
 
     return APIResponse(data={

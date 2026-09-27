@@ -40,3 +40,82 @@ export const formatQty = (value, assetClass) => {
   }
   return new Intl.NumberFormat('vi-VN').format(value);
 };
+// ============================================================
+// Portfolio Performance style helpers
+// ============================================================
+
+/** Fraction → "+12.34%" (null-safe). */
+export const fmtPct = (fraction, digits = 2) => {
+  if (fraction === null || fraction === undefined || !Number.isFinite(fraction)) return '—';
+  const v = fraction * 100;
+  return `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`;
+};
+
+/** Fraction → "12.34%" without sign. */
+export const fmtPctPlain = (fraction, digits = 1) => {
+  if (fraction === null || fraction === undefined || !Number.isFinite(fraction)) return '—';
+  return `${(fraction * 100).toFixed(digits)}%`;
+};
+
+/** VND with explicit sign: "+1.234.567 ₫". */
+export const fmtSignedVND = (value) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const s = formatVND(Math.abs(value));
+  return value > 0 ? `+${s}` : value < 0 ? `−${s}` : s;
+};
+
+/** Compact VND: 1.2 tỷ / 340 tr / 12k. */
+export const fmtCompactVND = (value) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '−' : '';
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(2)} tỷ`;
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(1)} tr`;
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(0)}k`;
+  return `${sign}${abs.toFixed(0)}`;
+};
+
+/** Plain VND number without currency symbol (null-safe). */
+export const fmtVND = (value) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value);
+};
+
+/** Price with sensible decimals (crypto sub-1 prices keep precision). */
+export const fmtPrice = (value) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  const decimals = abs >= 100 ? 0 : abs >= 1 ? 2 : 6;
+  return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: decimals }).format(value);
+};
+
+/** Holding period in days → "1 năm 2 tháng" / "45 ngày". */
+export const fmtDuration = (days) => {
+  if (days === null || days === undefined || !Number.isFinite(days)) return '—';
+  if (days < 31) return `${Math.round(days)} ngày`;
+  const years = Math.floor(days / 365);
+  const months = Math.floor((days % 365) / 30);
+  if (years === 0) return `${months} tháng`;
+  return months > 0 ? `${years} năm ${months} tháng` : `${years} năm`;
+};
+
+/** CSS tone class for a signed number. */
+export const toneOf = (value) => (value > 0 ? 'pp-up' : value < 0 ? 'pp-down' : 'pp-flat');
+
+/**
+ * Read a number typed by the user: "8.450.000", "8,450,000", "25,5", "25.5".
+ * Dot groups of three are thousands (Vietnamese habit); returns NaN when invalid.
+ */
+export const parseInputNumber = (input) => {
+  let s = String(input ?? '').trim().replace(/[\s₫đ]/gi, '');
+  if (!s) return NaN;
+  const hasDot = s.includes('.'), hasComma = s.includes(',');
+  if (hasDot && hasComma) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (hasComma) {
+    s = /^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (hasDot && /^\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, '');
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+};

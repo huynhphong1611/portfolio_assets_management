@@ -58,7 +58,7 @@ flowchart TD
     SAVE_PRICE --> SAVE_MARKET[Update marketPrices collection]
 
     SAVE_MARKET --> USERS[Loop: mỗi user]
-    USERS --> HOLDINGS[Calculate holdings FIFO]
+    USERS --> HOLDINGS[Calculate holdings - moving average]
     HOLDINGS --> PORTFOLIO[Calculate portfolio value]
     PORTFOLIO --> SNAPSHOT[Save dailySnapshots/date]
     SNAPSHOT --> NEXT{Còn user?}

@@ -124,7 +124,7 @@ sequenceDiagram
 
     loop Mỗi user
         BE->>FS: Load transactions
-        BE->>BE: Calculate holdings (FIFO)
+        BE->>BE: Calculate holdings (moving average cost)
         BE->>BE: Calculate portfolio value
         BE->>FS: Save dailySnapshots/{date}
     end

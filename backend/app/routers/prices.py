@@ -4,7 +4,7 @@ Prices router — vnstock + CoinGecko price fetching + market prices management.
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import Optional
 
-from app.models.schemas import MarketPricesUpdate, APIResponse
+from app.models.schemas import APIResponse
 from app.routers.auth import get_current_user
 from app.services import firestore_service as fs
 from app.services import price_service
@@ -65,17 +65,15 @@ async def get_market_prices():
     return APIResponse(data=data)
 
 
-@router.post("/market", response_model=APIResponse)
-async def save_market_prices(req: MarketPricesUpdate, user: dict = Depends(get_current_user)):
-    """Save/update market prices (batch) — requires auth. Admin portal uses /api/admin/system-prices."""
-    fs.batch_update_market_prices(req.prices)
-    return APIResponse(data={"updated": len(req.prices)})
-
-
 @router.get("/daily", response_model=APIResponse)
-async def get_daily_prices():
-    """Get system daily price entries (admin-controlled, global)."""
-    data = fs.get_system_daily_prices_history(30)
+async def get_daily_prices(
+    limit: int = Query(30, ge=1, le=1000, description="Number of most recent daily entries"),
+):
+    """Get system daily price entries (admin-controlled, global), newest first.
+
+    Used by the All Securities / Exchange Rates views to draw price history.
+    """
+    data = fs.get_system_daily_prices_history(limit)
     return APIResponse(data=data)
 
 
@@ -140,83 +138,13 @@ async def get_system_tickers():
     return APIResponse(data=data)
 
 
-@router.post("/system-tickers", response_model=APIResponse)
-async def add_system_ticker(req: dict, user: dict = Depends(get_current_user)):
-    """User adds a system ticker."""
-    category = req.get("category", "stocks")
-    ticker = req.get("ticker", "").strip().upper()
-    config = fs.get_supported_tickers()
-    if ticker:
-        if category in config and ticker not in config[category]:
-            config[category].append(ticker)
-            fs.save_supported_tickers(config)
-    return APIResponse(data=config)
-
-
 @router.post("/fetch-live", response_model=APIResponse)
 async def fetch_live_prices(user: dict = Depends(get_current_user)):
-    """User triggers fetching live prices for all supported tickers."""
-    from datetime import datetime
+    """
+    Backward-compatible alias of POST /api/securities/update-quotes:
+    downloads prices for the caller's AUTO securities and JSON feeds only.
+    """
     if not settings.VNSTOCK_API_ENABLED:
         raise HTTPException(status_code=503, detail="API is disabled")
-
-    target_date = datetime.now().strftime("%Y-%m-%d")
-    ticker_config = fs.get_supported_tickers()
-    all_tickers = (
-        ticker_config.get("stocks", []) +
-        ticker_config.get("crypto", []) +
-        ticker_config.get("funds", [])
-    )
-
-    if not all_tickers:
-        raise HTTPException(status_code=400, detail="No tickers configured.")
-
-    ticker_type_map = {}
-    for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
-    for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
-    for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
-
-    results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=target_date, ticker_type_map=ticker_type_map)
-
-    prices_vnd = {}
-    usdt_vnd = 0
-
-    usdt_result = results.get("USDT")
-    if usdt_result and usdt_result.get("price", 0) > 0:
-        usdt_vnd = usdt_result["price"]
-    if not usdt_vnd:
-        usdt_vnd = usdt_result.get("exchangeRate", 25500) if usdt_result else 25500
-
-    for ticker, result in results.items():
-        raw_price = result.get("price", 0)
-        if not raw_price or raw_price <= 0:
-            continue
-        ticker_type = result.get("type", "stock")
-        if ticker_type == "crypto" and ticker not in {"USDT", "USDC"}:
-            prices_vnd[ticker] = round(raw_price * usdt_vnd)
-        else:
-            prices_vnd[ticker] = raw_price
-
-    market_update = {}
-    stablecoin_keys = {"USDT", "USDC"}
-    crypto_tickers = set(ticker_config.get("crypto", []))
-
-    for ticker, price_vnd in prices_vnd.items():
-        if ticker in stablecoin_keys:
-            market_update[ticker] = {"price": price_vnd, "exchangeRate": price_vnd, "date": target_date, "source": "user_sync"}
-        elif ticker in crypto_tickers:
-            price_usd = round(price_vnd / usdt_vnd, 2) if usdt_vnd else 0
-            market_update[ticker] = {"price": price_vnd, "price_usd": price_usd, "usdt_vnd_rate": usdt_vnd, "date": target_date, "source": "user_sync"}
-        else:
-            market_update[ticker] = {"price": price_vnd, "date": target_date, "source": "user_sync"}
-
-    fs.save_system_daily_prices(target_date, prices_vnd, usdt_vnd)
-    fs.batch_update_market_prices(market_update)
-
-    return APIResponse(data={
-        "prices": prices_vnd,
-        "date": target_date,
-        "fetched": len(prices_vnd),
-        "total_tickers": len(all_tickers),
-        "usdt_vnd_rate": usdt_vnd,
-    })
+    from app.services import quote_update_service
+    return APIResponse(data=quote_update_service.update_quotes_for_user(user["sub"], user["type"]))

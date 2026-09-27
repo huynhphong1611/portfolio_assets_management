@@ -67,6 +67,8 @@ from app.routers import auth, transactions, external_assets, liabilities
 from app.routers import prices, snapshots, settings as settings_router, dashboard
 from app.routers import scheduler as scheduler_router
 from app.routers import admin as admin_router
+from app.routers import securities as securities_router
+from app.routers import data_io as data_io_router
 
 app.include_router(auth.router)
 app.include_router(transactions.router)
@@ -78,6 +80,8 @@ app.include_router(settings_router.router)
 app.include_router(dashboard.router)
 app.include_router(scheduler_router.router)
 app.include_router(admin_router.router)
+app.include_router(securities_router.router)
+app.include_router(data_io_router.router)
 
 # ── Scheduler Lifecycle ──
 

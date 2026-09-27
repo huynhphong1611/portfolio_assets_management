@@ -6,22 +6,67 @@ Snapshot Engine tự động chụp trạng thái danh mục đầu tư mỗi ng
 
 ## Cách hoạt động
 
-### 1. Tính toán Holdings (FIFO)
+### 1. Tính toán Holdings (giá vốn bình quân gia quyền di động)
 
-Từ danh sách giao dịch (`transactions`), hệ thống tính số lượng nắm giữ hiện tại:
+Từ danh sách giao dịch (`transactions`), hệ thống tính số lượng và giá vốn của từng mã theo **bình quân gia quyền di động** (moving average cost — cách các công ty chứng khoán Việt Nam tính giá vốn). JS `calculateHoldings()` và Python `calculate_holdings()` dùng đúng cùng quy tắc:
+
+| Giao dịch | Số lượng | Giá vốn (tổng) | Giá vốn bình quân |
+|---|---|---|---|
+| **Mua** q, thành tiền A | + q | + A | (giá vốn) / (số lượng) |
+| **Bán** q | − q | − BQ × q | **không đổi** |
 
 ```
-Transactions:
-  Buy  VCB  100 @ 80,000₫  → +100 VCB
-  Buy  VCB   50 @ 85,000₫  → +50 VCB
-  Sell VCB   30 @ 90,000₫  → -30 VCB (FIFO: lấy từ lô 80,000₫)
-
-Holdings:
-  VCB: 120 units
-    Lô 1: 70 @ 80,000₫ (100-30 đã bán)
-    Lô 2: 50 @ 85,000₫
-  Giá vốn trung bình: (70×80,000 + 50×85,000) / 120 = 82,083₫
+Mua VCB 100 @ 80.000 ₫ → SL 100, giá vốn  8.000.000, BQ 80.000
+Mua VCB  50 @ 85.000 ₫ → SL 150, giá vốn 12.250.000, BQ 81.667
+Bán VCB  30 @ 90.000 ₫ → giá vốn phần bán = 30 × 81.667 = 2.450.000
+                          lãi đã thực hiện = 2.700.000 − 2.450.000 = 250.000
+                          SL 120, giá vốn 9.800.000, BQ vẫn 81.667
 ```
+
+- Thành tiền (`totalVND`) đã gồm phí nên phí nằm trong giá vốn. Mua với giá 0 (cổ tức bằng cổ phiếu, cổ phiếu thưởng) làm giá vốn bình quân giảm đúng như trên sổ công ty chứng khoán.
+- **Bán nhiều hơn số đang giữ**: vị thế về 0. Phần vượt không có giá vốn nên **không** được tính vào lãi đã thực hiện; nó được báo trong mục *Kiểm tra dữ liệu*.
+- Lãi đã thực hiện của một lệnh bán luôn tính theo giá vốn bình quân **tại ngày bán** (form giao dịch cũng dùng giá vốn tại ngày của giao dịch khi nhập lùi ngày).
+- Theo từng nơi lưu ký (Tài khoản chứng khoán), mỗi tài khoản có giá vốn bình quân riêng; tên nơi lưu ký không phân biệt hoa/thường, và lệnh bán vượt số lượng của tài khoản ghi trên lệnh sẽ lấy phần còn lại từ tài khoản khác đang giữ mã đó.
+
+### Tiền mặt, vốn ròng và tổng lãi/lỗ
+
+Tiền mặt VNĐ là một sổ quỹ (`replayCash()` / `replay_cash()`), dùng chung cho Bảng kê tài sản, Tài khoản tiền mặt và dòng tiền của TTWROR/IRR:
+
+| Giao dịch | Tiền mặt | Vốn ròng |
+|---|---|---|
+| Nạp tiền | + số tiền | + số tiền |
+| Rút tiền | − số tiền | − số tiền |
+| Mua | − thành tiền | — |
+| Bán | + thành tiền | — |
+| Cổ tức / lãi | + số tiền | — |
+
+- **Có lệnh Nạp/Rút** (chế độ *tracked*): số dư có thể **âm** — nghĩa là một lệnh mua được ghi trước (hoặc thiếu) khoản nạp trả cho nó. Số dư không bao giờ bị ép về 0, vì ép về 0 sẽ tạo ra tiền mặt và lợi nhuận không có thật. Các đoạn số dư âm được liệt kê trong *Kiểm tra dữ liệu*.
+- **Không có lệnh Nạp/Rút nào** (chế độ *implicit*, ví dụ chỉ nhập lệnh mua/bán từ CSV): tiền bán và cổ tức được giữ lại để trả cho lệnh mua sau; phần lệnh mua cần vượt số dư được tính là **vốn góp ngầm định**. Nhờ vậy vốn ròng là số tiền thực sự bỏ vào và TTWROR không coi lệnh mua là lợi nhuận.
+- Mọi lệnh Nạp/Rút đều là tiền VNĐ (mã tài sản trên lệnh nạp/rút bị bỏ qua).
+- Các giao dịch cùng thời điểm giữ nguyên thứ tự, riêng Nạp tiền được ghi trước và Rút tiền ghi sau cùng.
+
+```
+Tổng lãi/lỗ = Giá trị danh mục (tài sản + tiền mặt) − Vốn ròng
+            = lãi đã thực hiện + lãi chưa thực hiện + cổ tức/lãi
+```
+
+Vốn ròng có thể ≤ 0 khi đã rút nhiều hơn số đã nạp; tổng lãi/lỗ vẫn là giá trị − vốn ròng, chỉ phần trăm lãi/lỗ không xác định (hiển thị 0).
+
+Stablecoin (USDT/USDC) chưa có giá được định giá theo tỷ giá của chính nó, rồi tỷ giá USDT, rồi giá vốn bình quân. Tài sản khác chưa có giá được định giá theo giá vốn bình quân.
+
+### Kiểm tra dữ liệu
+
+`src/utils/dataChecks.js` (giống *File → Check for inconsistencies* của Portfolio Performance) không sửa con số nào, chỉ chỉ ra giao dịch cần sửa. Kết quả hiện ở **Tất cả giao dịch**, **Tài khoản tiền mặt** và một dòng cảnh báo trên **Tổng quan**:
+
+| Loại | Mức | Ý nghĩa |
+|---|---|---|
+| Bán vượt số lượng | cảnh báo | Bán nhiều hơn số đang giữ tại thời điểm đó (thiếu lệnh mua/nhận, hoặc nhập sai số lượng) |
+| Tiền mặt âm tạm thời | lưu ý (cùng ngày) / cảnh báo | Lệnh mua ghi trước khoản tiền trả cho nó; hiển thị lệnh gây âm và lệnh bù lại |
+| Tiền mặt đang âm | cảnh báo | Thiếu lệnh Nạp tiền |
+| Nơi lưu ký viết khác nhau | lưu ý | "Binance" / "binance" được gộp làm một tài khoản |
+| Mua/Bán không dùng được | cảnh báo | Không có mã tài sản, hoặc số lượng bằng 0 |
+
+Form giao dịch chặn lưu một lệnh bán (hoặc sửa một lệnh mua) nếu nó làm một lệnh bán nào đó — kể cả các lệnh bán sau đó — vượt số lượng đang giữ tại ngày của lệnh.
 
 ### 2. Định giá bằng Market Prices
 

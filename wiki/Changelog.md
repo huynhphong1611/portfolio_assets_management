@@ -4,6 +4,35 @@
 
 ## Timeline
 
+### 2026-09-27 (3) — kiểm tra công thức
+- 🐛 Tiền mặt không còn bị ép về 0 khi lệnh mua vượt số dư (trước đây tạo ra tiền mặt và lãi ảo — 7,2 triệu ₫ trên dữ liệu thật); số dư âm được báo trong *Kiểm tra dữ liệu*
+- 🐛 Tổng lãi/lỗ = giá trị − vốn ròng, không ép vốn ròng về 0; tiền mặt, vốn ròng và dòng tiền TTWROR dùng chung một sổ quỹ
+- 🐛 Nhật ký chỉ có lệnh mua/bán (không có lệnh nạp): phần mua vượt tiền mặt được tính là vốn góp ngầm định
+- 🐛 Bán vượt số lượng đang giữ: chỉ phần đang giữ được tính lãi đã thực hiện (USDT: 76.340 ₫ thay vì 210.318 ₫)
+- 🐛 Stablecoin chưa có giá được định giá theo tỷ giá hoặc giá vốn (trước đây NaN ở frontend, 1 ₫ ở backend)
+- 🐛 Nơi lưu ký không phân biệt hoa/thường; form giao dịch dùng giá vốn bình quân tại ngày giao dịch
+- ✨ Khung *Kiểm tra dữ liệu*: bán vượt số lượng, tiền mặt âm, nơi lưu ký viết khác nhau
+- 📝 Tài liệu: giá vốn bình quân gia quyền di động (không phải FIFO), công thức tiền mặt và vốn ròng
+
+### 2026-09-27 (2)
+- ✨ Chứng khoán và lịch sử giá riêng cho từng user theo mô hình Portfolio Performance: nguồn giá Tự động / Nhập tay / JSON
+- ✨ Nguồn giá JSON tùy chỉnh (URL + JSONPath + hệ số nhân), có nút thử và giới hạn an toàn khi tải URL
+- ✨ Import CSV giao dịch và lịch sử giá qua backend, có xem trước, báo lỗi từng dòng, bỏ qua giao dịch trùng
+- ✨ Sao lưu và khôi phục toàn bộ dữ liệu user bằng một file JSON
+- 🔒 Bỏ các endpoint cho phép user ghi đè giá chung và danh sách mã chung; cập nhật giá theo phạm vi từng user
+- 🐛 Lưu giá hệ thống theo ngày kiểu gộp, không còn xóa giá mã khác khi chỉ lấy một phần
+- 🧪 Thêm test pytest cho backend
+
+### 2026-09-27
+- ✨ Tổ chức lại toàn bộ giao diện theo mô hình Portfolio Performance: cây điều hướng (Dữ liệu chung / Tài khoản / Báo cáo / Phân loại), kỳ báo cáo toàn cục, URL riêng cho từng màn hình
+- ✨ Engine hiệu suất: TTWROR, IRR, delta, max drawdown, biến động, heatmap lợi nhuận theo tháng, bảng tính hiệu suất
+- ✨ Báo cáo mới: Bảng kê tài sản, Hiệu suất theo chứng khoán, Cổ tức & Dòng tiền, Giao dịch lãi/lỗ, Tài khoản chứng khoán/tiền mặt, Tỷ giá & Vàng, Tái cân bằng dạng bảng
+- ✨ Loại giao dịch mới `Cổ tức` (cổ tức, coupon, lãi tiền gửi) ở frontend, backend và schema API
+- ✨ `GET /api/prices/daily?limit=N` để vẽ lịch sử giá từng mã
+- 🐛 Sửa form sửa giao dịch Rút tiền bị trống số tiền
+- 🐛 Snapshot lưu theo ngày địa phương thay vì ngày UTC
+- 🧪 Sửa 2 test cũ dùng dữ liệu giá sai đơn vị; thêm test cho engine hiệu suất, sổ quỹ, trục biểu đồ
+
 ### 2026-05-02
 - ✨ Thêm 100% stacked area chart và All time range
 - 🐛 Sửa lỗi BTC benchmark data (fallback days=365)

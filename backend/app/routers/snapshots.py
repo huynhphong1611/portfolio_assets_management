@@ -52,7 +52,9 @@ async def backfill_snapshots(
     For each date in [start_date, end_date]:
       1. Filter transactions to only those on or before the date.
       2. Replay holdings calculation as of that date.
-      3. Look up system daily prices for that date (fallback: current marketPrices).
+      3. Look up system daily prices for that date (API fetch, then 7-day fallback),
+         then overlay the user's own price history (MANUAL / GENERIC-JSON securities
+         and dates the system does not know).
       4. Save the resulting snapshot.
 
     This allows users to fill gaps in their historical performance chart.
@@ -78,6 +80,9 @@ async def backfill_snapshots(
     all_transactions  = fs.get_transactions(uid, utype)
     all_external      = fs.get_external_assets(uid, utype)
     all_liabilities   = fs.get_liabilities(uid, utype)
+    user_securities   = fs.get_securities(uid, utype)
+    user_prices       = fs.get_security_prices(uid, utype)
+    user_feeds        = ps.security_feeds(user_securities)
 
     from datetime import timedelta
     # Pre-fetch rolling prices for the last 7 days before d_start
@@ -150,9 +155,11 @@ async def backfill_snapshots(
             for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
             
             # Ensure all tickers from user's holdings are included
+            # (except securities the user prices on their own: MANUAL / GENERIC-JSON)
             for h in holdings:
                 ticker = h.get("ticker")
-                if ticker and ticker not in all_tickers and ticker != "VNĐ":
+                if (ticker and ticker not in all_tickers and ticker != "VNĐ"
+                        and user_feeds.get(ticker, ps.FEED_AUTO) == ps.FEED_AUTO):
                     all_tickers.append(ticker)
 
             from app.services import price_service
@@ -197,6 +204,8 @@ async def backfill_snapshots(
         # Fallback to rolling prices (up to 7 days) for missing tickers in user's holdings
         for h in holdings:
             ticker = h.get("ticker")
+            if user_feeds.get(ticker, ps.FEED_AUTO) != ps.FEED_AUTO:
+                continue  # priced from the user's own history below
             if ticker and ticker not in market_prices and ticker != "VNĐ":
                 last_known = rolling_prices.get(ticker)
                 if last_known:
@@ -212,6 +221,10 @@ async def backfill_snapshots(
                         logger.warning(f"  {ticker} at {date_str} has no price in last 7 days, fallback to avgCost")
                 else:
                     logger.warning(f"  {ticker} at {date_str} has no price history, fallback to avgCost")
+
+        # 2b. The user's own prices: MANUAL / GENERIC-JSON win, AUTO only fills gaps
+        market_prices = ps.apply_user_prices(market_prices, user_securities, user_prices, date_str,
+                                             tickers=[h.get("ticker") for h in holdings])
 
         # 3. Calculate portfolio as of that date
         portfolio = ps.calculate_portfolio(holdings, market_prices)
