@@ -6,6 +6,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# vnstock/vnai/vnstock_ezchart: quarantined on PyPI, install from vendored wheels instead
+# (see the note in requirements.txt)
+COPY vendor/wheels/ ./vendor/wheels/
+RUN pip install --no-cache-dir ./vendor/wheels/*.whl && rm -rf ./vendor/wheels
+
 # Copy application
 COPY . .
 

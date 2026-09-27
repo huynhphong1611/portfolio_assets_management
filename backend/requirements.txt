@@ -1,7 +1,10 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
 firebase-admin>=6.0.0
-vnstock>=3.0.0
+# vnstock, vnai, vnstock_ezchart: installed from backend/vendor/wheels/ (see Dockerfile),
+# not from PyPI — PyPI has quarantined those projects (pypi.org/simple/vnstock/ lists
+# zero files as of 2026-09-27). Restore this line and drop the vendor step once PyPI
+# clears the quarantine.
 pandas>=2.0.0
 requests>=2.31.0
 python-dotenv>=1.0.0
