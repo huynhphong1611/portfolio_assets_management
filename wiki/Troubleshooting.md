@@ -141,8 +141,8 @@ curl "https://api.coingecko.com/api/v3/ping" \
 **Nguyên nhân:** Giao dịch không nhất quán (bán nhiều hơn mua, hoặc thiếu deposit).
 
 **Xử lý:**
-1. Kiểm tra tab **Transactions** — đảm bảo có đủ `deposit` trước khi `buy`
-2. Kiểm tra thứ tự ngày giao dịch
+1. Mở **Tất cả giao dịch** → khung **Kiểm tra dữ liệu**: mỗi mục chỉ ra giao dịch cần sửa (bán vượt số lượng, tiền mặt âm, nơi lưu ký viết khác nhau…) và có nút mở form sửa
+2. Tiền mặt âm tạm thời thường do lệnh mua được ghi trước khoản nạp trả cho nó — sửa giờ của lệnh mua hoặc thêm khoản Nạp tiền còn thiếu
 3. Chạy lại **Backfill Snapshots** để tính toán lại:
    - Mở modal "Historical Snapshot"
    - Chọn date range từ ngày giao dịch đầu tiên

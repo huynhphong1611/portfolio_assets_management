@@ -44,7 +44,7 @@ backend/
     ├── services/                  # Business logic layer
     │   ├── auth_service.py        # JWT encode/decode, SHA-256, Firebase verify
     │   ├── firestore_service.py   # Firestore CRUD (20KB — core data layer)
-    │   ├── portfolio_service.py   # FIFO holdings, P&L, snapshot generation
+    │   ├── portfolio_service.py   # Moving-average holdings, cash replay, P&L, snapshots
     │   ├── price_service.py       # Multi-source price fetching engine
     │   └── scheduler.py           # APScheduler config + daily job logic
     │
@@ -93,7 +93,8 @@ get_price(symbol, asset_type_hint)
 
 ### `portfolio_service.py` — Tính toán danh mục
 
-- **FIFO (First-In-First-Out)** — Tính giá vốn bán ra
+- **Giá vốn bình quân gia quyền di động** — Tính giá vốn và lãi đã thực hiện khi bán
+- **Sổ quỹ tiền mặt** (`replay_cash`) — Số dư tiền mặt và vốn ròng (có thể âm; vốn góp ngầm định khi không có lệnh nạp)
 - **Holdings calculation** — Từ transaction log → số lượng nắm giữ
 - **P&L calculation** — Unrealized + Realized profit/loss
 - **Snapshot generation** — Chụp nhanh trạng thái danh mục theo ngày

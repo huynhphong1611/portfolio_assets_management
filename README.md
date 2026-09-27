@@ -22,10 +22,11 @@ Giao diện được tổ chức theo mô hình của [Portfolio Performance](ht
 - **TTWROR** (lợi suất theo thời gian, loại bỏ nạp/rút) và **IRR** (lợi suất theo dòng tiền), tích lũy và năm hóa
 - **Thay đổi tuyệt đối, Delta**, bảng tính: đầu kỳ + lãi/lỗ chưa thực hiện + đã thực hiện + thu nhập + nạp/rút = cuối kỳ
 - **Max drawdown** (và thời gian), **biến động / semi-volatility**, lợi nhuận theo tháng và năm
-- Lệnh lãi/lỗ theo **giá vốn bình quân**, hiệu suất và IRR theo từng mã
+- Lệnh lãi/lỗ theo **giá vốn bình quân gia quyền di động** (tại ngày bán), hiệu suất và IRR theo từng mã
+- **Kiểm tra dữ liệu**: chỉ ra lệnh bán vượt số lượng đang giữ, số dư tiền mặt âm, nơi lưu ký viết khác nhau — kèm nút mở giao dịch cần sửa
 - Loại giao dịch **Cổ tức** cho cổ tức tiền mặt, coupon và lãi tiền gửi
 
-Chi tiết công thức: [wiki/Feature-Performance-Reports.md](wiki/Feature-Performance-Reports.md).
+Chi tiết công thức: [wiki/Feature-Performance-Reports.md](wiki/Feature-Performance-Reports.md) (hiệu suất) và [wiki/Feature-Snapshot-Engine.md](wiki/Feature-Snapshot-Engine.md) (giá vốn, tiền mặt, vốn ròng, tổng lãi/lỗ).
 
 ### 🪙 Dữ liệu của riêng bạn
 - Mỗi user có **danh sách chứng khoán và lịch sử giá riêng**, như Portfolio Performance. Mỗi mã chọn nguồn giá: **Tự động** (vnstock, CoinGecko, SJC), **Nhập tay**, hoặc **JSON** (URL + JSONPath, có nút thử).
