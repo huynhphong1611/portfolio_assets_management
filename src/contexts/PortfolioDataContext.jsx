@@ -11,6 +11,7 @@ import {
   calculateRebalance, calculateTotalPnL, generateSnapshot,
 } from '../utils/portfolioCalculator.js';
 import { replayTransactions, buildValueSeries } from '../utils/performanceEngine.js';
+import { findDataIssues } from '../utils/dataChecks.js';
 import { toISO, todayISO } from '../utils/dates.js';
 
 const PortfolioDataContext = createContext(null);
@@ -102,6 +103,7 @@ export function PortfolioDataProvider({ children }) {
   const pnlSummary = useMemo(() => calculateTotalPnL(portfolio, transactions), [portfolio, transactions]);
   const rebalanceData = useMemo(() => calculateRebalance(portfolio, rebalanceTargets), [portfolio, rebalanceTargets]);
   const replay = useMemo(() => replayTransactions(transactions), [transactions]);
+  const dataIssues = useMemo(() => findDataIssues(transactions), [transactions]);
   const valueSeries = useMemo(() => buildValueSeries(snapshots, 'portfolioValue'), [snapshots]);
 
   const firstDate = useMemo(() => {
@@ -159,7 +161,7 @@ export function PortfolioDataProvider({ children }) {
     transactions, externalAssets, rebalanceTargets, marketPrices, systemMarketPrices, liabilities, snapshots, benchmarks,
     securities, userPrices,
     // derived
-    holdings, portfolio, netWorth, pnlSummary, rebalanceData, replay, valueSeries, firstDate, usdtVndRate,
+    holdings, portfolio, netWorth, pnlSummary, rebalanceData, replay, dataIssues, valueSeries, firstDate, usdtVndRate,
     today,
     // state
     loading, refreshing, error, lastUpdated,

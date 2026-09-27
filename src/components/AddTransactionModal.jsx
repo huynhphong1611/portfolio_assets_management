@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ArrowRightLeft, TrendingUp, TrendingDown, Coins } from 'lucide-react';
 import { apiAddTransaction, apiUpdateTransaction } from '../services/api';
+import { positionBefore, oversellsIntroducedBy } from '../utils/dataChecks.js';
 
 const ASSET_TYPES = [
   { value: 'Tiền mặt VNĐ', label: 'Tiền mặt VNĐ', icon: '💵' },
@@ -44,7 +45,7 @@ const initialFormState = {
   dividendShares: '',
 };
 
-export default function AddTransactionModal({ isOpen, onClose, onSuccess, transactionToEdit, portfolio = [] }) {
+export default function AddTransactionModal({ isOpen, onClose, onSuccess, transactionToEdit, transactions = [] }) {
   const [form, setForm] = useState(initialFormState);
   const [saving, setSaving] = useState(false);
 
@@ -95,6 +96,10 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
   const isCashTx  = form.transactionType === 'Nạp tiền' || form.transactionType === 'Rút tiền';
   const isWithdraw = form.transactionType === 'Rút tiền';
   const isDividend = form.transactionType === 'Cổ tức';
+  const editId = transactionToEdit?.id;
+  // Position and cash just before this transaction's own date (not today's):
+  // a backdated sale is checked and priced with the average cost of that date.
+  const asOf = positionBefore(transactions, { date: form.date, ticker: form.ticker }, editId);
 
   const calculatedTotal = () => {
     if (isWithdraw) return parseFloat(form.withdrawalAmount) || 0;
@@ -105,19 +110,16 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
     return qty * price * rate;
   };
 
-  /** Realized P&L preview when selling */
+  /** Realized P&L preview when selling: (sale price − average cost on that date) × quantity */
   const realizedPreview = (() => {
-    if (form.transactionType !== 'Bán') return null;
-    const ticker = (form.ticker || '').toUpperCase();
-    const holding = portfolio.find(p => p.ticker === ticker);
-    if (!holding || !holding.avgCost) return null;
+    if (form.transactionType !== 'Bán' || !(asOf.avgCost > 0)) return null;
     const qty   = parseFloat(form.quantity) || 0;
     const price  = parseFloat(form.unitPrice) || 0;
     const rate   = parseFloat(form.exchangeRate) || 1;
     const salePriceVND = price * rate;
-    const pnl    = (salePriceVND - holding.avgCost) * qty;
-    const pnlPct = holding.avgCost > 0 ? ((salePriceVND - holding.avgCost) / holding.avgCost) * 100 : 0;
-    return { pnl, pnlPct, avgCost: holding.avgCost };
+    const pnl    = (salePriceVND - asOf.avgCost) * qty;
+    const pnlPct = ((salePriceVND - asOf.avgCost) / asOf.avgCost) * 100;
+    return { pnl, pnlPct, avgCost: asOf.avgCost, held: asOf.qty };
   })();
 
   const handleSubmit = async (e) => {
@@ -137,9 +139,8 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           alert('⚠️ Vui lòng nhập số tiền rút hợp lệ.');
           setSaving(false); return;
         }
-        const cashHolding = portfolio.find(p => p.ticker === 'VNĐ');
-        const availableCash = cashHolding?.qty || 0;
-        if (withdrawal > availableCash) {
+        const availableCash = asOf.cash;
+        if (withdrawal > availableCash + 0.5) {
           alert(`⚠️ Không đủ tiền mặt!\nHiện có: ${new Intl.NumberFormat('vi-VN').format(availableCash)} VNĐ\nMuốn rút: ${new Intl.NumberFormat('vi-VN').format(withdrawal)} VNĐ`);
           setSaving(false); return;
         }
@@ -205,30 +206,12 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
         return;
       }
 
-      // ── Validate Bán ──
-      if (form.transactionType === 'Bán') {
-        const tickerStr = form.ticker.toUpperCase();
-        const currentHolding = portfolio.find(p => p.ticker === tickerStr)?.qty || 0;
-        const isSameTicker = transactionToEdit && (transactionToEdit.ticker || '').toUpperCase() === tickerStr;
-        const oldQtyRefund = isSameTicker ? Math.abs(transactionToEdit.quantity || 0) : 0;
-        const availableQty = currentHolding + oldQtyRefund;
-        if (qty > availableQty) {
-          alert(`⚠️ Số lượng bán vượt quá số lượng đang có!\nTối đa có thể bán: ${availableQty}.`);
-          setSaving(false);
-          return;
-        }
-      }
-
-      // Compute Realized P&L for Sell transactions
+      // Realized P&L of a sale, at the average cost on the sale date
       let pnlVND = 0, pnlPercent = 0;
-      if (form.transactionType === 'Bán') {
-        const tickerStr = (form.ticker || '').toUpperCase();
-        const holding = portfolio.find(p => p.ticker === tickerStr);
-        if (holding && holding.avgCost > 0) {
-          const salePriceVND = price * rate;
-          pnlVND     = (salePriceVND - holding.avgCost) * qty;
-          pnlPercent = ((salePriceVND - holding.avgCost) / holding.avgCost) * 100;
-        }
+      if (form.transactionType === 'Bán' && asOf.avgCost > 0) {
+        const salePriceVND = price * rate;
+        pnlVND     = (salePriceVND - asOf.avgCost) * qty;
+        pnlPercent = ((salePriceVND - asOf.avgCost) / asOf.avgCost) * 100;
       }
 
       const txData = {
@@ -247,6 +230,17 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
         storage: form.storage,
         notes: form.notes,
       };
+
+      // ── Validate Mua / Bán: no sale may exceed the quantity held at its date,
+      //    including later sales that a backdated sale (or a smaller buy) would starve ──
+      const oversold = oversellsIntroducedBy(transactions, txData, editId);
+      if (oversold.length) {
+        const fmt = (n) => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 8 }).format(n);
+        const lines = oversold.slice(0, 5).map(i => `• ${i.dateTime}: bán ${fmt(i.qty)} ${i.ticker}, khi đó chỉ giữ ${fmt(i.held)}`);
+        alert(`⚠️ Số lượng bán vượt số lượng đang nắm giữ tại thời điểm giao dịch:\n${lines.join('\n')}`);
+        setSaving(false);
+        return;
+      }
 
       if (transactionToEdit) {
         await apiUpdateTransaction(transactionToEdit.id, txData);
@@ -345,14 +339,13 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
                 required
               />
               {(() => {
-                const cashHolding = portfolio.find(p => p.ticker === 'VNĐ');
-                const avail = cashHolding?.qty || 0;
+                const avail = asOf.cash;
                 const want  = parseFloat(form.withdrawalAmount) || 0;
                 if (!avail) return null;
                 const ok = want <= avail;
                 return (
                   <p className="form-hint-cash">
-                    💰 Số dư: <strong>{new Intl.NumberFormat('vi-VN').format(avail)} ₫</strong>
+                    💰 Số dư tại ngày rút: <strong>{new Intl.NumberFormat('vi-VN').format(avail)} ₫</strong>
                     {want > 0 && (
                       <span style={{ marginLeft: 8, color: ok ? 'var(--color-emerald-500)' : 'var(--color-rose-500)' }}>
                         {ok ? '✅ Đủ số dư' : '⚠️ Vượt số dư!'}
@@ -420,6 +413,10 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
             }}>
               <span className="form-total-label">
                 Lãi / Lỗ đã chốt (Realized P&L)
+                <span className="form-label-hint" style={{ display: 'block' }}>
+                  Giá vốn BQ tại ngày bán {new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(realizedPreview.avgCost)} ₫
+                  {' · '}đang giữ {new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 8 }).format(realizedPreview.held)}
+                </span>
               </span>
               <span className="form-total-value" style={{ color: realizedPreview.pnl >= 0 ? 'var(--color-emerald-400)' : 'var(--color-rose-400)' }}>
                 {realizedPreview.pnl >= 0 ? '+' : ''}

@@ -38,7 +38,13 @@ export default function SecuritiesAccountsView() {
               selectedKey={selected}
               onRowClick={r => setSelected(r.name)}
               columns={[
-                { key: 'name', label: 'Tên', render: r => <><div className="pp-strong">{r.name}</div><div className="pp-meta">{r.positions.length} vị thế · {r.txCount} giao dịch</div></>, footer: () => <strong>Tổng</strong> },
+                { key: 'name', label: 'Tên', render: r => (
+                  <>
+                    <div className="pp-strong">{r.name}</div>
+                    <div className="pp-meta">{r.positions.length} vị thế · {r.txCount} giao dịch</div>
+                    {r.spellings.length > 1 && <div className="pp-meta" title="Tên nơi lưu ký được so khớp không phân biệt hoa/thường">Gộp: {r.spellings.join(', ')}</div>}
+                  </>
+                ), footer: () => <strong>Tổng</strong> },
                 { key: 'value', label: 'Giá trị', align: 'right', render: r => fmtVND(r.value), footer: () => <strong>{fmtVND(totalValue)}</strong> },
               ]}
             />

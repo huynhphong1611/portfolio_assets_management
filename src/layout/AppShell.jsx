@@ -15,7 +15,7 @@ export default function AppShell() {
   const { route, sub } = matchRoute(path);
   const View = VIEWS[route.path] || DashboardView;
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { loading, error, txModal, closeTransactionModal, refresh, portfolio } = usePortfolioData();
+  const { loading, error, txModal, closeTransactionModal, refresh, transactions } = usePortfolioData();
   const { currentUser } = useAuth();
 
   useEffect(() => { setDrawerOpen(false); }, [path]);
@@ -51,7 +51,7 @@ export default function AppShell() {
         onClose={closeTransactionModal}
         onSuccess={refresh}
         transactionToEdit={txModal.tx}
-        portfolio={portfolio}
+        transactions={transactions}
       />
     </div>
   );

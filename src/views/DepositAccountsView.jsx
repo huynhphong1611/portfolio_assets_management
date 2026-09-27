@@ -1,59 +1,59 @@
 import React, { useMemo } from 'react';
-import { AlertTriangle } from 'lucide-react';
 import { usePortfolioData } from '../contexts/PortfolioDataContext.jsx';
-import { Card, Kpi, PageHeader, DataTable, TxTypeBadge, Empty } from '../components/ui';
+import { Card, Kpi, PageHeader, DataTable, TxTypeBadge, Badge, Empty } from '../components/ui';
+import DataIssues from '../components/DataIssues.jsx';
 import { Link } from '../router/useHashRoute.jsx';
 import { buildCashLedger } from '../utils/accounts.js';
+import { CASH_TOLERANCE } from '../utils/dataChecks.js';
 import { fmtSignedVND, fmtVND, fmtPrice, toneOf, formatVND, formatQty } from '../utils/formatters.js';
 import { formatISO } from '../utils/dates.js';
 
 /** PP → Accounts → Deposit Accounts (cash with running balance). */
 export default function DepositAccountsView() {
-  const { transactions, portfolio, externalAssets, openTransactionModal } = usePortfolioData();
+  const { transactions, portfolio, externalAssets, dataIssues, openTransactionModal } = usePortfolioData();
   const ledger = useMemo(() => buildCashLedger(transactions), [transactions]);
-  const rows = useMemo(() => [...ledger.rows].reverse(), [ledger]);
+  const rows = useMemo(() => ledger.rows.map((r, i) => ({ ...r, key: `${r.id || i}:${r.kind}` })).reverse(), [ledger]);
   const stablecoins = useMemo(() => portfolio.filter(p => p.assetClass === 'Tiền mặt USD'), [portfolio]);
   const liquidExternal = useMemo(() => externalAssets.filter(a => a.group === 'Thanh khoản'), [externalAssets]);
-  const earningsTotal = useMemo(() => ledger.rows.filter(r => r.tx.transactionType === 'Cổ tức').reduce((s, r) => s + r.delta, 0), [ledger]);
-  const shortfall = useMemo(() => ledger.rows.filter(r => r.requested < r.delta - 0.5), [ledger]);
+  const earningsTotal = useMemo(() => ledger.rows.filter(r => r.kind === 'earnings').reduce((s, r) => s + r.delta, 0), [ledger]);
+  const cashIssues = useMemo(() => dataIssues.filter(i => i.kind === 'negative-cash'), [dataIssues]);
 
   return (
     <>
       <PageHeader title="Tài khoản tiền mặt" subtitle="Deposit Accounts · sổ quỹ với số dư lũy kế sau từng giao dịch" />
       <div className="pp-kpi-grid">
         <Kpi label="Số dư VNĐ" value={formatVND(ledger.balance)} tone="neutral" />
-        <Kpi label="Nạp ròng (nạp − rút)" value={formatVND(ledger.netDeposits)} tone="neutral" />
+        <Kpi label={ledger.mode === 'implicit' ? 'Vốn góp (ngầm định)' : 'Nạp ròng (nạp − rút)'} value={formatVND(ledger.netDeposits)} tone="neutral"
+          sub={ledger.mode === 'implicit' ? 'Chưa có lệnh nạp: phần tiền mua vượt số dư được tính là vốn góp' : null} />
         <Kpi label="Cổ tức & lãi đã nhận" value={fmtSignedVND(earningsTotal)} raw={earningsTotal} />
         <Kpi label="Stablecoin (quy đổi)" value={formatVND(stablecoins.reduce((s, p) => s + p.actualValue, 0))} tone="neutral"
           sub={stablecoins.map(s => s.ticker).join(', ') || 'Không có'} />
       </div>
 
-      {shortfall.length > 0 && (
-        <div className="pp-alert">
-          <AlertTriangle size={16} />
-          <span>{shortfall.length} lệnh mua vượt số dư tiền mặt tại thời điểm đó — số dư được giữ ở 0. Hãy kiểm tra các khoản nạp tiền còn thiếu.</span>
-        </div>
-      )}
+      <DataIssues issues={cashIssues} title="Số dư tiền mặt" onEdit={tx => openTransactionModal(tx)} />
 
       <Card title="Tiền mặt VNĐ" subtitle="Nạp/rút, tiền mua/bán chứng khoán và thu nhập" padded={false}>
         <DataTable
           rows={rows}
-          rowKey={(r, i) => r.id || i}
+          rowKey={r => r.key}
           footer={false}
           maxHeight={560}
           onRowClick={r => openTransactionModal(r.tx)}
           emptyText="Chưa có giao dịch tiền mặt. Hãy ghi nhận một khoản “Nạp tiền”."
           columns={[
             { key: 'date', label: 'Ngày', render: r => formatISO(r.date), sortValue: r => r.date },
-            { key: 'type', label: 'Loại', sortValue: r => r.tx.transactionType, render: r => <TxTypeBadge type={r.tx.transactionType} /> },
+            { key: 'type', label: 'Loại', sortValue: r => r.tx.transactionType, render: r => (r.kind === 'implicit'
+              ? <Badge tone="gray" title="Lệnh mua cần nhiều tiền hơn số dư; chưa có lệnh nạp nào nên phần thiếu được tính là vốn góp">Vốn góp ngầm định</Badge>
+              : <TxTypeBadge type={r.tx.transactionType} />) },
             { key: 'ticker', label: 'Mã', sortValue: r => r.tx.ticker || '', render: r => r.tx.ticker || '—' },
             { key: 'notes', label: 'Ghi chú', sortable: false, className: 'pp-td--notes', render: r => r.tx.notes || r.tx.storage || '' },
-            { key: 'delta', label: 'Phát sinh', align: 'right', render: r => (
-              <span className={toneOf(r.delta)} title={r.requested !== r.delta ? `Yêu cầu ${fmtSignedVND(r.requested)}` : ''}>
-                {fmtSignedVND(r.delta)}{r.requested < r.delta - 0.5 && ' ⚠'}
+            { key: 'delta', label: 'Phát sinh', align: 'right', render: r => <span className={toneOf(r.delta)}>{fmtSignedVND(r.delta)}</span> },
+            { key: 'balance', label: 'Số dư', align: 'right', render: r => (
+              <span className={`pp-strong${r.balance < -CASH_TOLERANCE ? ' pp-balance-negative' : ''}`}
+                title={r.balance < -CASH_TOLERANCE ? 'Số dư âm: lệnh mua được ghi trước (hoặc thiếu) khoản nạp trả cho nó' : ''}>
+                {fmtVND(r.balance)}{r.balance < -CASH_TOLERANCE && ' ⚠'}
               </span>
             ) },
-            { key: 'balance', label: 'Số dư', align: 'right', render: r => <span className="pp-strong">{fmtVND(r.balance)}</span> },
           ]}
         />
       </Card>

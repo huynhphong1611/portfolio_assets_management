@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { PlusCircle, Upload } from 'lucide-react';
+import { PlusCircle, Upload, AlertTriangle } from 'lucide-react';
 import { usePortfolioData } from '../contexts/PortfolioDataContext.jsx';
 import { useReportingPeriod } from '../contexts/ReportingPeriodContext.jsx';
 import { usePeriodReport } from '../hooks/usePeriodReport.js';
@@ -13,7 +13,7 @@ import { fmtPct, fmtPctPlain, fmtSignedVND, fmtVND, fmtDuration, toneOf, formatV
 import { formatISO, toISO, parseVNDate } from '../utils/dates.js';
 
 export default function DashboardView() {
-  const { portfolio, netWorth, pnlSummary, transactions, openTransactionModal } = usePortfolioData();
+  const { portfolio, netWorth, pnlSummary, transactions, dataIssues, openTransactionModal } = usePortfolioData();
   const { label } = useReportingPeriod();
   const report = usePeriodReport('portfolioValue');
 
@@ -62,13 +62,23 @@ export default function DashboardView() {
     <>
       <PageHeader title="Tổng quan" subtitle={`Chỉ số chính · kỳ báo cáo: ${label}`} />
 
+      {dataIssues.some(i => i.level === 'warning') && (
+        <div className="pp-alert">
+          <AlertTriangle size={16} />
+          <span>
+            Dữ liệu giao dịch có {dataIssues.filter(i => i.level === 'warning').length} điểm cần kiểm tra (bán vượt số lượng, tiền mặt âm…).{' '}
+            <Link to="/transactions" className="pp-link">Xem chi tiết →</Link>
+          </span>
+        </div>
+      )}
+
       <div className="pp-kpi-grid">
         <Kpi label="Tài sản ròng" value={formatVND(netWorth.totalNetWorth)} tone="neutral"
           sub={`Tài sản ${formatVND(netWorth.totalAssets)} · Nợ ${formatVND(netWorth.totalLiabilities)}`} />
         <Kpi label="Giá trị danh mục" value={formatVND(pnlSummary.totalValue)} tone="neutral"
-          sub={`Vốn ròng đã nạp ${formatVND(pnlSummary.totalCost)}`} />
+          sub={`Vốn ròng ${formatVND(pnlSummary.totalCost)}`} />
         <Kpi label="Lãi/lỗ tích lũy" value={fmtSignedVND(pnlSummary.totalPnL)} raw={pnlSummary.totalPnL}
-          sub={`${fmtPct(pnlSummary.totalPnLPercent / 100)} trên vốn ròng`} />
+          sub={pnlSummary.totalCost > 0 ? `${fmtPct(pnlSummary.totalPnLPercent / 100)} trên vốn ròng` : 'Vốn ròng ≤ 0: không tính %'} />
         <Kpi label="Tiền mặt khả dụng" value={formatVND(cash)} tone="neutral"
           sub={pnlSummary.totalValue > 0 ? `${fmtPctPlain(cash / pnlSummary.totalValue)} danh mục` : null} />
       </div>

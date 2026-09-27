@@ -826,3 +826,37 @@ label.pp-btn { cursor: pointer; }
   .pp-feed-options { grid-template-columns: minmax(0, 1fr); }
 }
 .pp-alert > svg { flex-shrink: 0; }
+
+/* ── Data consistency checks ───────────────────────────── */
+
+.pp-issues {
+  margin-bottom: 12px;
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius);
+  background: var(--pp-panel);
+  font-size: 13px;
+}
+.pp-issues--warning { border-color: #f2cf8d; }
+.pp-issues-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  color: var(--pp-text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-issues--warning .pp-issues-head { background: #fff8ea; color: #7a4b00; }
+.pp-issues-head > svg { flex-shrink: 0; }
+.pp-issues-list { margin: 0; padding: 0; list-style: none; }
+.pp-issue { padding: 10px 12px 10px 14px; border-top: 1px solid var(--pp-border); border-left: 3px solid var(--pp-border-strong); }
+.pp-issue--warning { border-left-color: #e0a23b; }
+.pp-issue-title { font-weight: 600; color: var(--pp-text); }
+.pp-issue-detail { margin-top: 2px; color: var(--pp-text-2); line-height: 1.45; overflow-wrap: anywhere; }
+.pp-issue-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+.pp-issue-actions .pp-link { padding: 0; border: none; background: none; font: inherit; font-size: 12.5px; cursor: pointer; }
+.pp-balance-negative { color: var(--pp-down); }

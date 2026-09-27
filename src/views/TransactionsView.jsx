@@ -4,7 +4,8 @@ import { usePortfolioData } from '../contexts/PortfolioDataContext.jsx';
 import { PageHeader } from '../components/ui';
 import TransactionLog from '../components/TransactionLog.jsx';
 import ImportCSVModal from '../components/ImportCSVModal.jsx';
-import { parseVNDate } from '../utils/dates.js';
+import DataIssues from '../components/DataIssues.jsx';
+import { sortTransactions } from '../utils/portfolioCalculator.js';
 
 const CSV_COLUMNS = [
   ['date', 'Ngày giờ'], ['transactionType', 'Loại giao dịch'], ['assetClass', 'Loại tài sản'], ['ticker', 'Mã'],
@@ -12,25 +13,33 @@ const CSV_COLUMNS = [
   ['totalVND', 'Thành tiền (VNĐ)'], ['pnlVND', 'Lãi/Lỗ VNĐ'], ['storage', 'Nơi lưu trữ'], ['notes', 'Ghi chú'],
 ];
 
-function toCSV(transactions) {
+/**
+ * CSV export. "Lãi/Lỗ VNĐ" of a sale is the realized P&L the engine computes
+ * now (proceeds − average cost on the sale date), not the figure stored when
+ * the row was entered, which goes stale once earlier rows are edited.
+ */
+function toCSV(transactions, realizedById) {
   const esc = (v) => {
     const s = v === null || v === undefined ? '' : String(v);
     return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const sorted = [...transactions].sort((a, b) => parseVNDate(a.date) - parseVNDate(b.date));
+  const value = (t, k) => (k === 'pnlVND' && realizedById.has(t.id) ? Math.round(realizedById.get(t.id)) : t[k]);
   const lines = [CSV_COLUMNS.map(c => c[1]).join(',')];
-  for (const t of sorted) lines.push(CSV_COLUMNS.map(([k]) => esc(t[k])).join(','));
+  for (const t of sortTransactions(transactions)) lines.push(CSV_COLUMNS.map(([k]) => esc(value(t, k))).join(','));
   return '﻿' + lines.join('\n');
 }
 
 /** PP → Accounts → All Transactions */
 export default function TransactionsView() {
-  const { transactions, loading, refresh, openTransactionModal } = usePortfolioData();
+  const { transactions, replay, dataIssues, loading, refresh, openTransactionModal } = usePortfolioData();
   const [importOpen, setImportOpen] = useState(false);
+  const hasWarnings = dataIssues.some(i => i.level === 'warning');
   const [notice, setNotice] = useState(null);
 
   const exportCSV = () => {
-    const blob = new Blob([toCSV(transactions)], { type: 'text/csv;charset=utf-8' });
+    const realizedById = new Map();
+    for (const t of replay.trades) if (t.id) realizedById.set(t.id, (realizedById.get(t.id) || 0) + t.pnl);
+    const blob = new Blob([toCSV(transactions, realizedById)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -55,6 +64,12 @@ export default function TransactionsView() {
         )}
       />
       {notice && <div className="pp-alert pp-alert--ok">{notice}</div>}
+      <DataIssues
+        key={hasWarnings ? 'open' : 'closed'}
+        issues={dataIssues}
+        onEdit={tx => openTransactionModal(tx)}
+        defaultOpen={hasWarnings}
+      />
       <TransactionLog transactions={transactions} loading={loading} onUpdate={refresh} onEdit={tx => openTransactionModal(tx)} />
       <ImportCSVModal
         mode="transactions"
