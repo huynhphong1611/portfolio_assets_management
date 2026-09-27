@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-27] — user-owned securities & data
+### Added
+- **securities**: Per-user securities and price history (`securities/{ticker}`, `securityPrices/{ticker}`) with Portfolio Performance style quote feeds: `AUTO` (system prices), `MANUAL` (entered or imported by the user), `GENERIC-JSON` (URL + JSONPath + factor). New `/api/securities` router and a security editor in the All Securities view (feed configuration, feed test, manual prices, missing-price warnings).
+- **feeds**: `quote_feed_service.py` downloads JSON feeds with SSRF guards (public IPs only, default ports, no redirects, 1 MB / 10 s limits) and a JSONPath subset.
+- **import**: Backend CSV import for transactions and historical prices with dry-run preview, per-row errors, duplicate detection, Vietnamese and international number formats; reads the legacy Google Form sheet and the app's own export.
+- **backup**: Full workspace export and idempotent restore (`/api/data/export`, `/api/data/import/workspace`).
+- **tests**: Backend pytest suite running without Firebase; frontend tests for the price resolver.
+
+### Changed
+- **valuation**: Frontend, scheduler, snapshot backfill and dashboard value holdings with system prices overlaid by the user's own prices (MANUAL/JSON win, AUTO only fills gaps).
+- **scheduler**: The ticker universe includes every user's AUTO securities; JSON feeds are refreshed per user before snapshots.
+- **prices**: System daily prices are merged per date instead of overwritten.
+
+### Security
+- **prices**: Removed `POST /api/prices/market` and `POST /api/prices/system-tickers`, which let any signed-in user overwrite shared prices and tickers. `POST /api/prices/fetch-live` now only fetches the caller's own AUTO tickers.
+
+### Removed
+- **import**: The client-side CSV import with hard-coded data (`src/scripts/importCSV.js`, `src/services/firestoreService.js`); it wrote to Firestore from the browser and was blocked for guest users.
+
 ## [2026-09-27]
 ### Changed
 - **ui**: Restructured the whole user app after Portfolio Performance: navigation tree (General Data / Accounts / Reports / Taxonomies), global reporting period, hash routes for every view, flat desktop-style theme (`src/styles/pp.css`), responsive drawer on mobile.

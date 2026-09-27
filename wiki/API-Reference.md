@@ -132,9 +132,8 @@ Base URL: `http://localhost:8000` (local) hoặc `https://portfoliomanagement-d2
 | `GET` | `/api/prices/stock` | ✅ | Lấy giá 1 mã |
 | `GET` | `/api/prices/stocks` | ✅ | Lấy giá nhiều mã |
 | `GET` | `/api/prices/daily?limit=30` | ❌ | Lịch sử giá hệ thống (mới nhất trước, `limit` 1–1000) |
-| `POST` | `/api/prices/daily` | ✅ | Lưu giá user theo ngày |
-| `GET` | `/api/prices/market` | ✅ | Lấy giá thị trường |
-| `POST` | `/api/prices/market` | ✅ | Cập nhật giá thị trường |
+| `GET` | `/api/prices/market` | ❌ | Giá thị trường mới nhất của hệ thống |
+| `POST` | `/api/prices/fetch-live` | ✅ | Cập nhật giá cho mã Tự động của chính user (giống `/api/securities/update-quotes`) |
 | `GET` | `/api/prices/system-daily` | ✅ | Lấy giá system theo ngày |
 | `GET` | `/api/prices/benchmark-history` | ✅ | VNINDEX + BTC historical |
 
@@ -160,6 +159,26 @@ GET /api/prices/stocks?symbols=BTC,VCB,VFF&source=kbs
   }
 }
 ```
+
+---
+
+## 🪙 Securities & Data
+
+Danh mục chứng khoán, nguồn giá, giá riêng, import CSV và sao lưu của từng user: xem [[Feature User Securities]].
+
+| Method | Endpoint | Auth | Mô tả |
+|--------|----------|:----:|--------|
+| `GET` | `/api/securities` | ✅ | Chứng khoán của user |
+| `PUT` / `DELETE` | `/api/securities/{ticker}` | ✅ | Tạo, sửa, xóa chứng khoán |
+| `GET` | `/api/securities/prices` | ✅ | Toàn bộ giá riêng của user |
+| `GET` / `PUT` | `/api/securities/{ticker}/prices` | ✅ | Đọc, thêm hoặc thay lịch sử giá |
+| `DELETE` | `/api/securities/{ticker}/prices/{date}` | ✅ | Xóa một giá |
+| `POST` | `/api/securities/feed/test` | ✅ | Thử nguồn JSON |
+| `POST` | `/api/securities/update-quotes` | ✅ | Cập nhật giá cho user |
+| `POST` | `/api/data/import/transactions` | ✅ | Import CSV giao dịch (xem trước với `dryRun`) |
+| `POST` | `/api/data/import/prices` | ✅ | Import CSV lịch sử giá |
+| `GET` | `/api/data/export` | ✅ | Sao lưu toàn bộ dữ liệu user |
+| `POST` | `/api/data/import/workspace` | ✅ | Khôi phục từ bản sao lưu |
 
 ---
 

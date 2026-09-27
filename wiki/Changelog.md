@@ -4,6 +4,15 @@
 
 ## Timeline
 
+### 2026-09-27 (2)
+- ✨ Chứng khoán và lịch sử giá riêng cho từng user theo mô hình Portfolio Performance: nguồn giá Tự động / Nhập tay / JSON
+- ✨ Nguồn giá JSON tùy chỉnh (URL + JSONPath + hệ số nhân), có nút thử và giới hạn an toàn khi tải URL
+- ✨ Import CSV giao dịch và lịch sử giá qua backend, có xem trước, báo lỗi từng dòng, bỏ qua giao dịch trùng
+- ✨ Sao lưu và khôi phục toàn bộ dữ liệu user bằng một file JSON
+- 🔒 Bỏ các endpoint cho phép user ghi đè giá chung và danh sách mã chung; cập nhật giá theo phạm vi từng user
+- 🐛 Lưu giá hệ thống theo ngày kiểu gộp, không còn xóa giá mã khác khi chỉ lấy một phần
+- 🧪 Thêm test pytest cho backend
+
 ### 2026-09-27
 - ✨ Tổ chức lại toàn bộ giao diện theo mô hình Portfolio Performance: cây điều hướng (Dữ liệu chung / Tài khoản / Báo cáo / Phân loại), kỳ báo cáo toàn cục, URL riêng cho từng màn hình
 - ✨ Engine hiệu suất: TTWROR, IRR, delta, max drawdown, biến động, heatmap lợi nhuận theo tháng, bảng tính hiệu suất

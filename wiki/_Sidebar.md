@@ -17,6 +17,7 @@
 
 ### ⚙️ Tính năng
 - [[Feature Performance Reports]]
+- [[Feature User Securities]]
 - [[Feature Price Service]]
 - [[Feature Snapshot Engine]]
 - [[Feature Scheduler]]

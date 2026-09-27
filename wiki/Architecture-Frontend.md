@@ -40,7 +40,8 @@ src/
 │
 ├── views/                         # Một file cho mỗi màn hình (xem Feature Performance Reports)
 │   ├── DashboardView.jsx
-│   ├── SecuritiesView.jsx · ExchangeRatesView.jsx
+│   ├── SecuritiesView.jsx         # Chứng khoán của user: nguồn giá, giá nhập tay, nguồn JSON
+│   ├── ExchangeRatesView.jsx
 │   ├── SecuritiesAccountsView.jsx · DepositAccountsView.jsx · OtherAssetsView.jsx · TransactionsView.jsx
 │   ├── StatementOfAssetsView.jsx
 │   ├── performance/               # Calculation · Chart · Securities · Payments · Trades
@@ -53,6 +54,7 @@ src/
 │   ├── charts/                    # LineChart, BarChart, StackedAreaChart, PerformanceChart, AssetChart, scale.js
 │   ├── widgets/HeatmapWidget.jsx  # Lợi nhuận theo tháng
 │   ├── AddTransactionModal.jsx    # Nạp / Rút / Mua / Bán / Cổ tức
+│   ├── ImportCSVModal.jsx         # Import CSV giao dịch / lịch sử giá, xem trước trước khi ghi
 │   ├── TransactionLog.jsx         # Nhật ký giao dịch nhóm theo năm/tháng
 │   ├── NetWorthExternalManager.jsx · LiabilitiesManager.jsx
 │   ├── RebalanceSettings.jsx · HistoricalSnapshotModal.jsx · AssetAllocationChart.jsx
@@ -66,12 +68,14 @@ src/
 ├── services/
 │   ├── api.js                     # API client (JWT, REST)
 │   ├── adminApi.js
-│   └── firestoreService.js        # Chỉ dùng cho script import CSV
+│   └── (api.js: securities, import CSV, sao lưu/khôi phục)
 │
 └── utils/
     ├── portfolioCalculator.js     # Holdings, định giá, tài sản ròng, P&L, snapshot
     ├── performanceEngine.js       # TTWROR, IRR, drawdown, biến động, trades…
     ├── accounts.js                # Sổ quỹ tiền mặt, vị thế theo nơi lưu ký
+    ├── priceResolver.js           # Giá hệ thống + giá riêng của user theo nguồn giá
+    ├── csvTemplates.js            # File CSV mẫu
     ├── assetClasses.js            # Màu, thứ tự, nhãn loại tài sản
     ├── reportingPeriod.js · dates.js · formatters.js
 ```
@@ -89,7 +93,8 @@ AuthProvider
                 └─ View            usePeriodReport() → computePeriodReport(snapshots, transactions, kỳ)
 ```
 
-- Mọi màn hình đọc dữ liệu từ context, không tự gọi API trùng lặp (trừ lịch sử giá và danh sách mã được theo dõi).
+- Mọi màn hình đọc dữ liệu từ context, không tự gọi API trùng lặp (trừ lịch sử giá hệ thống).
+- Context tải cả chứng khoán và giá riêng của user; `marketPrices` là giá hệ thống đã chồng giá riêng theo `priceResolver.js`, `systemMarketPrices` là giá gốc.
 - Sau khi thêm/sửa/xóa, view gọi `refresh()` để tải lại dữ liệu.
 - Modal giao dịch là toàn cục: `openTransactionModal(tx?)` từ bất kỳ màn hình nào.
 - Snapshot hôm nay được tự lưu khi mở ứng dụng nếu chưa có (theo ngày địa phương).

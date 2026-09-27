@@ -44,7 +44,8 @@ Ngày bắt đầu là **ngày gốc**: giá trị cuối ngày đó là giá tr
 | Giao dịch `Nạp tiền` / `Rút tiền` | Dòng tiền ngoài (external cash flow) — trung tính với hiệu suất |
 | Giao dịch `Mua` / `Bán` | Giá vốn bình quân, lãi/lỗ đã thực hiện, lệnh lãi/lỗ |
 | Giao dịch `Cổ tức` | Thu nhập (cổ tức, coupon, lãi tiền gửi) |
-| `marketPrices`, `system/prices/daily` | Định giá hiện tại và lịch sử giá từng mã |
+| `marketPrices`, `system/prices/daily` | Giá hệ thống: định giá hiện tại và lịch sử giá từng mã |
+| `securities`, `securityPrices` của user | Giá nhập tay, import CSV hoặc nguồn JSON; xem [[Feature User Securities]] |
 | `/api/prices/benchmarks/history` | VN-Index và Bitcoin làm chỉ số tham chiếu |
 
 ## Công thức

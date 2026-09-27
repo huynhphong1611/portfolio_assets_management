@@ -25,6 +25,8 @@ graph TD
     G_UID --> G_LIA["liabilities/"]
     G_UID --> G_FUND["funds/"]
     G_UID --> G_SET["settings/"]
+    G_UID --> G_SEC["securities/"]
+    G_UID --> G_PRC["securityPrices/"]
 
     SYSTEM --> S_UID["{uid}/"]
     S_UID --> S_TX["transactions/"]
@@ -33,6 +35,8 @@ graph TD
     S_UID --> S_LIA["liabilities/"]
     S_UID --> S_FUND["funds/"]
     S_UID --> S_SET["settings/"]
+    S_UID --> S_SEC["securities/"]
+    S_UID --> S_PRC["securityPrices/"]
 
     MARKET --> M_TICK["{TICKER}<br/>price, date, source"]
 
@@ -119,6 +123,28 @@ Cả hai có cấu trúc sub-collections **giống nhau**:
 | Field | Type | Mô tả |
 |-------|------|--------|
 | `rebalanceTargets` | map | Tỷ lệ phân bổ mục tiêu theo asset type |
+
+#### `securities/{TICKER}` — chứng khoán của user
+
+| Field | Type | Mô tả |
+|-------|------|--------|
+| `ticker` | string | Mã, viết hoa |
+| `name` | string | Tên hiển thị |
+| `assetClass` | string | Một trong 6 loại tài sản |
+| `feed` | string | `AUTO`, `MANUAL` hoặc `GENERIC-JSON` |
+| `feedURL` | string | URL nguồn JSON |
+| `feedProperties` | map | `closePath`, `datePath`, `factor`, `numberFormat` |
+| `note` | string | Ghi chú |
+| `isRetired` | bool | Ngừng theo dõi |
+
+#### `securityPrices/{TICKER}` — lịch sử giá riêng của user
+
+| Field | Type | Mô tả |
+|-------|------|--------|
+| `prices` | map | `{ "YYYY-MM-DD": giá VNĐ }` |
+| `updatedAt` | timestamp | Lần cập nhật cuối |
+
+Xem quy tắc dùng giá ở [[Feature User Securities]].
 
 ### 3. `marketPrices/{TICKER}` — Giá thị trường hiện tại
 
