@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026-09-27]
+### Changed
+- **ui**: Restructured the whole user app after Portfolio Performance: navigation tree (General Data / Accounts / Reports / Taxonomies), global reporting period, hash routes for every view, flat desktop-style theme (`src/styles/pp.css`), responsive drawer on mobile.
+- **architecture**: Split the 650-line `App.jsx` into `PortfolioDataContext`, `ReportingPeriodContext`, `layout/` and one component per view under `src/views/`.
+- **charts**: Charts measure their container width, use round axis ticks and month/year labels on long ranges.
+
+### Added
+- **performance**: `performanceEngine.js` with TTWROR, IRR, absolute change, delta, max drawdown (+ duration), volatility, semi-volatility, monthly/yearly returns, trades and per-security performance.
+- **reports**: Statement of Assets, Performance (Calculation, Chart with Returns/Volatility, Securities, Payments, Trades), Securities and Deposit Accounts (running cash balance), All Securities with price history, Exchange Rates, Asset Classes taxonomy with rebalancing amounts, custodian taxonomy, CSV export of transactions.
+- **transactions**: New `Cổ tức` type (dividends, coupons, interest) in the JS engine, the Python engine and the API schema.
+- **api**: `GET /api/prices/daily` accepts `limit` (1–1000).
+
+### Fixed
+- **transactions**: Editing a `Rút tiền` transaction no longer opens with an empty amount.
+- **snapshots**: Snapshots created by the app use the local calendar date instead of the UTC date.
+- **tests**: Mock market prices now use VND (as stored by the backend); the 2 previously failing calculator tests pass.
+
+### Removed
+- **ui**: `CumulativePerformanceChart` and `SystemPricesBoard`, replaced by the Performance Chart and All Securities views.
+
 ## [2026-05-03]
 ### Fixed
 - **api**: Fixed 422 Unprocessable Entity error when selling USDC or performing cash transactions. Updated schema to support USDC currency, negative quantities for sales, and optional tickers for deposits/withdrawals. [AI: Gemini 3 Flash]

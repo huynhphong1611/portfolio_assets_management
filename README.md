@@ -7,39 +7,37 @@
 
 ## ✨ Core Features
 
-### 🏠 Dashboard — Tổng quan Tài sản
-- **Net Worth tracking** — Total Assets minus Liabilities
-- **Assets vs Liabilities** visualization with gradient progress bars
-- **Growth charts** — Track net worth changes over time with daily snapshots
-- **External assets** — TOPI, bank deposits, real estate
-- **Liabilities management** — Bank loans, credit cards
+Giao diện được tổ chức theo mô hình của [Portfolio Performance](https://www.portfolio-performance.info/en/): cây điều hướng bên trái, **kỳ báo cáo** dùng chung trên thanh công cụ, báo cáo dạng bảng dày thông tin và URL riêng cho từng màn hình (`#/reports/performance/chart`…).
 
-### 💼 Danh mục Đầu tư — Portfolio Overview
-- **All holdings at a glance** — Mathematical verification via FIFO rules
-- **Asset allocation** donut chart (Bonds, Stocks, Crypto, Gold, Cash)
-- **Portfolio growth chart** — Value, Cost Basis, P&L over time
+| Nhóm | Màn hình |
+|------|----------|
+| **Tổng quan** | Tài sản ròng, giá trị danh mục, TTWROR, IRR, delta, max drawdown, biểu đồ so với VN-Index/Bitcoin, heatmap lợi nhuận theo tháng, phân bổ, vị thế lớn nhất, giao dịch gần đây |
+| **Dữ liệu chung** | Tất cả chứng khoán (giá mới nhất, ± phiên, lịch sử giá, giao dịch theo mã, cập nhật giá, thêm mã) · Tỷ giá & Vàng (USDT, USDC, SJC) |
+| **Tài khoản** | Tài khoản chứng khoán (vị thế theo nơi lưu ký) · Tài khoản tiền mặt (sổ quỹ với số dư lũy kế) · Tài sản khác & Nợ · Tất cả giao dịch (lọc, nhóm theo năm/tháng, xuất CSV) |
+| **Báo cáo** | Bảng kê tài sản (nhóm theo loại tài sản, biểu đồ giá trị, phân bổ) · Hiệu suất: Tính toán, Biểu đồ + Lợi suất/Biến động, Theo chứng khoán, Cổ tức & Dòng tiền, Giao dịch lãi/lỗ |
+| **Phân loại** | Loại tài sản (định nghĩa, biểu đồ tròn, tỷ trọng theo thời gian, tái cân bằng kèm số tiền cần mua/bán) · Nơi lưu ký |
+| **Cài đặt & Dữ liệu** | Snapshot hôm nay, dựng snapshot lịch sử, cập nhật giá & tính lại, import CSV |
 
-### 📊 Bảng giá Động — Dynamic Price Board
-- **Auto-derived from portfolio** — Ticker list pulled from actual transactions, no hardcoded list
-- **Base items** (USDT/VND, Vàng SJC) always visible
-- **Fetch prices via API** — vnstock for VN stocks/funds, CoinGecko for crypto
-- **CoinGecko Auto-Detect** — Unknown crypto tickers auto-resolved via search API
+### 📈 Chỉ số hiệu suất
+- **TTWROR** (lợi suất theo thời gian, loại bỏ nạp/rút) và **IRR** (lợi suất theo dòng tiền), tích lũy và năm hóa
+- **Thay đổi tuyệt đối, Delta**, bảng tính: đầu kỳ + lãi/lỗ chưa thực hiện + đã thực hiện + thu nhập + nạp/rút = cuối kỳ
+- **Max drawdown** (và thời gian), **biến động / semi-volatility**, lợi nhuận theo tháng và năm
+- Lệnh lãi/lỗ theo **giá vốn bình quân**, hiệu suất và IRR theo từng mã
+- Loại giao dịch **Cổ tức** cho cổ tức tiền mặt, coupon và lãi tiền gửi
+
+Chi tiết công thức: [wiki/Feature-Performance-Reports.md](wiki/Feature-Performance-Reports.md).
 
 ### 🤖 Auto Scheduler — Daily 9AM Job
 - **Backend APScheduler** running at 9:00 AM Asia/Ho_Chi_Minh
-- **For each user**: extract portfolio tickers → batch fetch prices → save daily prices → update market prices → generate snapshot
-- **Manual trigger**: `POST /api/scheduler/run-now`
-- **Status check**: `GET /api/scheduler/status`
+- **For each user**: fetch system prices → save daily prices → update market prices → generate snapshot
+- **Manual trigger**: `POST /api/scheduler/run-now` · **Status**: `GET /api/scheduler/status`
 
-### 🏦 Fund & API Connectivity
-- **vnstock** — VN Stock & Fund NAVs from fmarket
-- **CoinGecko** — Crypto prices in USD (realtime + historical)
-- **Rate Limit Resilience** — 60-second in-memory caching, 0.5s delay between batch requests
-- **Smart Fallback** — Unknown tickers try stock → CoinGecko auto-detect
+### 🏦 Price Sources
+- **vnstock** — VN stocks & fund NAVs (fmarket) · **CoinGecko** — crypto & stablecoin VND rates · **vang.today** — SJC gold
+- 60-second in-memory caching, smart fallback for unknown tickers
 
 ### 🔐 Authentication
-- **Firebase Auth** — For production users (ID token verification)
-- **Guest Auth** — SHA-256 password hashing with JWT session tokens
+- **Firebase Auth** (ID token verification) and **Guest Auth** (SHA-256 + JWT)
 - **User data isolation** — `system_users/{uid}/...` vs `guest_users/{uid}/...`
 
 ---
@@ -48,7 +46,7 @@
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18, Vite 5, Lucide Icons |
+| **Frontend** | React 18, Vite 5, Lucide Icons, custom SVG charts |
 | **Backend** | Python FastAPI + Uvicorn |
 | **Database** | Firebase Firestore (Admin SDK) |
 | **Scheduler** | APScheduler (BackgroundScheduler) |
@@ -120,56 +118,45 @@ curl http://localhost:8000/api/status
 
 ```
 ├── src/                             # React Frontend
-│   ├── App.jsx                      # Main app with tab navigation
+│   ├── App.jsx                      # Auth gate + data/period providers + AppShell
+│   ├── router/                      # routes.js (navigation tree), useHashRoute.jsx
+│   ├── layout/                      # AppShell, Sidebar (tree), Toolbar, PeriodPicker
+│   ├── views/                       # Dashboard, Securities, ExchangeRates, Accounts, Transactions,
+│   │   ├── performance/             #   Calculation, Chart, Securities, Payments, Trades
+│   │   └── taxonomies/              #   AssetClasses (+ rebalancing), Storage
+│   ├── contexts/                    # AuthContext, PortfolioDataContext, ReportingPeriodContext
 │   ├── components/
-│   │   ├── PriceManager.jsx         # Dynamic price board (from portfolio)
-│   │   ├── TransactionLog.jsx       # Transaction history
-│   │   ├── AddTransactionModal.jsx  # Add buy/sell transactions
-│   │   ├── FundManager.jsx          # Investment fund management
-│   │   ├── RebalanceSettings.jsx    # Portfolio rebalancing targets
-│   │   ├── NetWorthExternalManager.jsx  # External assets
-│   │   ├── LiabilitiesManager.jsx   # Debt management
-│   │   └── Auth/Login.jsx           # Login (Firebase + Guest)
-│   ├── services/
-│   │   └── api.js                   # API client (JWT auth, REST calls)
-│   ├── contexts/
-│   │   └── AuthContext.jsx          # Auth state management
+│   │   ├── ui/                      # Card, Kpi, DataTable, Tabs, PageHeader, Badge, Empty
+│   │   ├── charts/                  # LineChart, BarChart, StackedAreaChart, PerformanceChart…
+│   │   ├── widgets/                 # HeatmapWidget (monthly returns)
+│   │   └── …                        # AddTransactionModal, TransactionLog, managers, Admin/, Auth/
+│   ├── hooks/                       # usePeriodReport, useDailyPriceHistory
+│   ├── services/api.js              # API client (JWT auth, REST calls)
+│   ├── styles/pp.css                # Portfolio Performance–style workspace theme
 │   └── utils/
-│       ├── portfolioCalculator.js   # Client-side calculations
-│       └── formatters.js            # Number & currency formatting
+│       ├── portfolioCalculator.js   # Holdings, valuation, net worth, P&L, snapshots
+│       ├── performanceEngine.js     # TTWROR, IRR, drawdown, volatility, trades
+│       ├── accounts.js              # Cash ledger, holdings per custodian
+│       └── reportingPeriod.js · dates.js · formatters.js · assetClasses.js
 │
 ├── backend/                         # Python FastAPI Backend
 │   ├── app/
 │   │   ├── main.py                  # App entry + scheduler startup
-│   │   ├── config.py                # Settings from environment
-│   │   ├── firebase_init.py         # Firebase Admin SDK
-│   │   ├── routers/
-│   │   │   ├── auth.py              # Login/register + JWT
-│   │   │   ├── transactions.py      # CRUD transactions
-│   │   │   ├── funds.py             # CRUD funds
-│   │   │   ├── prices.py            # Price fetch + save
-│   │   │   ├── dashboard.py         # Aggregated portfolio data
-│   │   │   ├── scheduler.py         # Scheduler status + manual trigger
-│   │   │   ├── snapshots.py         # Daily snapshots
-│   │   │   ├── external_assets.py   # External assets
-│   │   │   ├── liabilities.py       # Liabilities
-│   │   │   └── settings.py          # Rebalance targets
-│   │   ├── services/
-│   │   │   ├── auth_service.py      # Auth logic (JWT, SHA-256, Firebase)
-│   │   │   ├── firestore_service.py # Firestore CRUD operations
-│   │   │   ├── portfolio_service.py # Portfolio calculations engine
-│   │   │   ├── price_service.py     # vnstock + CoinGecko fetching
-│   │   │   └── scheduler.py         # APScheduler daily job
-│   │   ├── models/
-│   │   │   └── schemas.py           # Pydantic request models
-│   │   └── utils/
-│   │       └── cache.py             # In-memory TTL cache
+│   │   ├── routers/                 # auth, transactions, prices, snapshots, dashboard, admin…
+│   │   ├── services/                # portfolio_service (engine port), price_service, scheduler…
+│   │   └── models/schemas.py        # Pydantic request models
 │   ├── requirements.txt
 │   └── Dockerfile
 │
+├── wiki/                            # Project wiki (architecture, features, API)
 ├── docker-compose.yml               # Backend + Frontend orchestration
-├── vite.config.js                   # Vite dev server + API proxy
-└── .env                             # Secrets (gitignored)
+└── vite.config.js                   # Vite dev server + API proxy
+```
+
+### Tests
+
+```bash
+npm test          # Vitest: portfolio calculator, performance engine, accounts, chart scales
 ```
 
 ---
@@ -186,7 +173,7 @@ curl http://localhost:8000/api/status
 ### Per-user sub-collections:
 | Sub-collection | Purpose |
 |---------------|---------|
-| `transactions` | Buy/Sell/Deposit transaction history |
+| `transactions` | Nạp tiền / Rút tiền / Mua / Bán / Cổ tức history |
 | `externalAssets` | Assets outside the investment portfolio |
 | `liabilities` | Debts and loans |
 | `funds` | Virtual investment fund divisions |
@@ -219,7 +206,7 @@ curl http://localhost:8000/api/status
 |--------|----------|-------------|
 | GET | `/api/prices/stock?symbol=VCB` | Single price fetch |
 | GET | `/api/prices/stocks?symbols=BTC,VFF` | Multi price fetch |
-| GET/POST | `/api/prices/daily` | User daily prices |
+| GET | `/api/prices/daily?limit=30` | System daily price history (newest first) |
 | GET/POST | `/api/prices/market` | Global market prices |
 
 ### Scheduler

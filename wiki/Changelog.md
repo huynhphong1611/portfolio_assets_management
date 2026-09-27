@@ -4,6 +4,16 @@
 
 ## Timeline
 
+### 2026-09-27
+- ✨ Tổ chức lại toàn bộ giao diện theo mô hình Portfolio Performance: cây điều hướng (Dữ liệu chung / Tài khoản / Báo cáo / Phân loại), kỳ báo cáo toàn cục, URL riêng cho từng màn hình
+- ✨ Engine hiệu suất: TTWROR, IRR, delta, max drawdown, biến động, heatmap lợi nhuận theo tháng, bảng tính hiệu suất
+- ✨ Báo cáo mới: Bảng kê tài sản, Hiệu suất theo chứng khoán, Cổ tức & Dòng tiền, Giao dịch lãi/lỗ, Tài khoản chứng khoán/tiền mặt, Tỷ giá & Vàng, Tái cân bằng dạng bảng
+- ✨ Loại giao dịch mới `Cổ tức` (cổ tức, coupon, lãi tiền gửi) ở frontend, backend và schema API
+- ✨ `GET /api/prices/daily?limit=N` để vẽ lịch sử giá từng mã
+- 🐛 Sửa form sửa giao dịch Rút tiền bị trống số tiền
+- 🐛 Snapshot lưu theo ngày địa phương thay vì ngày UTC
+- 🧪 Sửa 2 test cũ dùng dữ liệu giá sai đơn vị; thêm test cho engine hiệu suất, sổ quỹ, trục biểu đồ
+
 ### 2026-05-02
 - ✨ Thêm 100% stacked area chart và All time range
 - 🐛 Sửa lỗi BTC benchmark data (fallback days=365)

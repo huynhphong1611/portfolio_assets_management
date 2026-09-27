@@ -62,6 +62,38 @@ Base URL: `http://localhost:8000` (local) hoặc `https://portfoliomanagement-d2
 
 | Method | Endpoint | Auth | Mô tả |
 |--------|----------|:----:|--------|
+| `GET` | `/api/transactions` | ✅ | Lấy danh sách giao dịch (mới nhất trước) |
+| `POST` | `/api/transactions` | ✅ | Tạo giao dịch mới |
+| `PUT` | `/api/transactions/{id}` | ✅ | Sửa giao dịch |
+| `DELETE` | `/api/transactions/{id}` | ✅ | Xoá giao dịch |
+
+**Create Transaction** (`TransactionCreate`):
+```json
+{
+  "date": "15/03/2026 10:00:00",
+  "transactionType": "Mua",
+  "assetClass": "Cổ phiếu",
+  "ticker": "VNM",
+  "quantity": 100,
+  "unitPrice": 70000,
+  "currency": "VNĐ",
+  "exchangeRate": 1,
+  "totalVND": 7000000,
+  "storage": "SSI",
+  "notes": "Mua VNM"
+}
+```
+
+| Trường | Giá trị |
+|--------|---------|
+| `transactionType` | `Nạp tiền` · `Rút tiền` · `Mua` · `Bán` · `Cổ tức` |
+| `assetClass` | `Tiền mặt VNĐ` · `Tiền mặt USD` · `Trái phiếu` · `Cổ phiếu` · `Tài sản mã hóa` · `Vàng` |
+| `currency` | `VNĐ` · `USDT` · `USDC` · `USD` |
+| `quantity` | Khác 0; lệnh `Bán` gửi số âm |
+
+**Cổ tức / lãi:** `transactionType: "Cổ tức"`, `totalVND` = số tiền nhận. Có `ticker` → cổ tức của mã đó; `ticker` rỗng + `assetClass: "Tiền mặt VNĐ"` → lãi tiền gửi. Tiền mặt tăng, giá vốn và vốn ròng không đổi.
+
+--------|----------|:----:|--------|
 | `GET` | `/api/transactions` | ✅ | Lấy danh sách giao dịch |
 | `POST` | `/api/transactions` | ✅ | Tạo giao dịch mới |
 | `DELETE` | `/api/transactions/{id}` | ✅ | Xoá giao dịch |
@@ -99,7 +131,7 @@ Base URL: `http://localhost:8000` (local) hoặc `https://portfoliomanagement-d2
 |--------|----------|:----:|--------|
 | `GET` | `/api/prices/stock` | ✅ | Lấy giá 1 mã |
 | `GET` | `/api/prices/stocks` | ✅ | Lấy giá nhiều mã |
-| `GET` | `/api/prices/daily` | ✅ | Lấy giá user theo ngày |
+| `GET` | `/api/prices/daily?limit=30` | ❌ | Lịch sử giá hệ thống (mới nhất trước, `limit` 1–1000) |
 | `POST` | `/api/prices/daily` | ✅ | Lưu giá user theo ngày |
 | `GET` | `/api/prices/market` | ✅ | Lấy giá thị trường |
 | `POST` | `/api/prices/market` | ✅ | Cập nhật giá thị trường |
