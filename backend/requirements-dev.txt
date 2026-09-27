@@ -1,0 +1,4 @@
+# Test-only dependencies (backend unit tests: `cd backend && python -m pytest`)
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27

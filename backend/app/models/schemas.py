@@ -84,12 +84,6 @@ class LiabilityUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-# ── Market Prices ──
-
-class MarketPricesUpdate(BaseModel):
-    prices: dict  # {ticker: {price, exchangeRate?, ...}} map
-
-
 # ── Snapshot ──
 
 class SnapshotCreate(BaseModel):

@@ -296,15 +296,21 @@ def get_system_daily_prices_history(limit_count: int = 30) -> list[dict]:
 
 
 def save_system_daily_prices(date_str: str, prices: dict, usdt_vnd_rate: float = 0) -> None:
-    """Save system-wide daily prices (admin writes only)."""
+    """
+    Save system-wide daily prices for a date.
+    Merges into the existing day: a partial fetch (e.g. one user's tickers)
+    never wipes prices of other tickers already stored for that date.
+    """
     db = get_db()
     doc = db.collection("system").document("prices").collection("daily").document(date_str)
-    doc.set({
+    data = {
         "date": date_str,
         "prices": prices,
-        "usdt_vnd_rate": usdt_vnd_rate,
         "updatedAt": SERVER_TIMESTAMP,
-    })
+    }
+    if usdt_vnd_rate:
+        data["usdt_vnd_rate"] = usdt_vnd_rate
+    doc.set(data, merge=True)
 
 
 # ── Supported Tickers Config (Admin-managed) ──
@@ -568,4 +574,130 @@ def migrate_user_daily_prices_to_system() -> dict:
         "dates_written": written,
         "users_scanned": total_users,
         "source_entries": total_entries,
+    }
+
+
+# ── Helpers ──
+
+def _serialize(data: dict) -> dict:
+    """Convert Firestore timestamps to ISO strings for JSON responses."""
+    out = {}
+    for k, v in (data or {}).items():
+        out[k] = v.isoformat() if hasattr(v, "isoformat") and not isinstance(v, str) else v
+    return out
+
+
+def _commit_in_batches(writes: list) -> int:
+    """writes: list of callables(batch). Firestore allows 500 writes per batch."""
+    db = get_db()
+    done = 0
+    for i in range(0, len(writes), 400):
+        batch = db.batch()
+        for write in writes[i:i + 400]:
+            write(batch)
+        batch.commit()
+        done += len(writes[i:i + 400])
+    return done
+
+
+# ── User securities (Portfolio Performance style master data) ──
+
+def get_securities(user_id: str, user_type: str) -> list[dict]:
+    col = _user_col(user_id, user_type, "securities")
+    return [{"id": d.id, **_serialize(d.to_dict())} for d in col.stream()]
+
+
+def get_security(user_id: str, user_type: str, ticker: str) -> Optional[dict]:
+    snap = _user_doc(user_id, user_type, "securities", ticker).get()
+    return {"id": snap.id, **_serialize(snap.to_dict())} if snap.exists else None
+
+
+def save_security(user_id: str, user_type: str, ticker: str, data: dict) -> None:
+    ref = _user_doc(user_id, user_type, "securities", ticker)
+    ref.set({**data, "ticker": ticker, "updatedAt": SERVER_TIMESTAMP}, merge=True)
+
+
+def delete_security(user_id: str, user_type: str, ticker: str) -> None:
+    """Delete a security together with its price history (like Portfolio Performance)."""
+    _user_doc(user_id, user_type, "securities", ticker).delete()
+    _user_doc(user_id, user_type, "securityPrices", ticker).delete()
+
+
+# ── User price history ──
+
+def get_security_prices(user_id: str, user_type: str, ticker: Optional[str] = None) -> dict:
+    """Return {ticker: {"YYYY-MM-DD": close}} for one or all securities."""
+    col = _user_col(user_id, user_type, "securityPrices")
+    if ticker:
+        snap = col.document(ticker).get()
+        return {ticker: (snap.to_dict() or {}).get("prices", {}) if snap.exists else {}}
+    return {d.id: (d.to_dict() or {}).get("prices", {}) for d in col.stream()}
+
+
+def merge_security_prices(user_id: str, user_type: str, ticker: str, prices: dict) -> int:
+    """Add or overwrite the given dates; other dates are kept."""
+    if not prices:
+        return 0
+    ref = _user_doc(user_id, user_type, "securityPrices", ticker)
+    ref.set({"ticker": ticker, "prices": prices, "updatedAt": SERVER_TIMESTAMP}, merge=True)
+    return len(prices)
+
+
+def replace_security_prices(user_id: str, user_type: str, ticker: str, prices: dict) -> int:
+    """Replace the whole price history of a security."""
+    ref = _user_doc(user_id, user_type, "securityPrices", ticker)
+    ref.set({"ticker": ticker, "prices": prices or {}, "updatedAt": SERVER_TIMESTAMP})
+    return len(prices or {})
+
+
+def delete_security_price(user_id: str, user_type: str, ticker: str, date_str: str) -> bool:
+    ref = _user_doc(user_id, user_type, "securityPrices", ticker)
+    snap = ref.get()
+    if not snap.exists:
+        return False
+    prices = dict((snap.to_dict() or {}).get("prices", {}))
+    if date_str not in prices:
+        return False
+    del prices[date_str]
+    ref.set({"ticker": ticker, "prices": prices, "updatedAt": SERVER_TIMESTAMP})
+    return True
+
+
+# ── Bulk import / export ──
+
+def add_transactions_bulk(user_id: str, user_type: str, transactions: list[dict]) -> int:
+    col = _user_col(user_id, user_type, "transactions")
+    writes = []
+    for tx in transactions:
+        data = {k: v for k, v in tx.items() if k != "id"}
+        data["createdAt"] = SERVER_TIMESTAMP
+        ref = col.document(tx["id"]) if tx.get("id") else col.document()
+        writes.append(lambda b, ref=ref, data=data: b.set(ref, data))
+    return _commit_in_batches(writes)
+
+
+def upsert_documents(user_id: str, user_type: str, collection_name: str, docs: list[dict], id_key: str = "id") -> int:
+    """Create or replace documents by id (used by backup restore)."""
+    col = _user_col(user_id, user_type, collection_name)
+    writes = []
+    for doc in docs:
+        doc_id = str(doc.get(id_key) or "").strip()
+        data = {k: v for k, v in doc.items() if k != "id"}
+        ref = col.document(doc_id) if doc_id else col.document()
+        writes.append(lambda b, ref=ref, data=data: b.set(ref, data))
+    return _commit_in_batches(writes)
+
+
+def export_user_workspace(user_id: str, user_type: str) -> dict:
+    """Everything a user owns, in one JSON-serialisable document."""
+    def dump(name):
+        return [{"id": d.id, **_serialize(d.to_dict())} for d in _user_col(user_id, user_type, name).stream()]
+    return {
+        "transactions": dump("transactions"),
+        "securities": dump("securities"),
+        "securityPrices": get_security_prices(user_id, user_type),
+        "externalAssets": dump("externalAssets"),
+        "liabilities": dump("liabilities"),
+        "snapshots": dump("dailySnapshots"),
+        "settings": {"rebalanceTargets": get_rebalance_targets(user_id, user_type)},
     }

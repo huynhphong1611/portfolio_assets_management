@@ -81,56 +81,45 @@ def _get_all_user_ids() -> list[dict]:
     return users
 
 
-def _extract_tickers(transactions: list) -> list[str]:
-    """Extract unique non-cash tickers from transactions."""
-    tickers = set()
-    for tx in transactions:
-        ticker = tx.get("ticker", "")
-        if ticker and ticker != "VNĐ":
-            tickers.add(ticker)
-    return sorted(tickers)
-
-
 def daily_price_snapshot_job():
     """
     Main scheduled job — runs daily at 9:00 AM.
-    Fetches prices for admin-configured tickers, saves to system/prices/daily,
-    updates marketPrices, then generates per-user snapshots from system prices.
+    Fetches system prices for admin-configured tickers and every user's AUTO
+    securities, saves them to system/prices/daily and marketPrices, refreshes
+    each user's GENERIC-JSON feeds, then saves per-user snapshots valued with
+    system prices overlaid by the user's own prices.
     """
     today = datetime.now().strftime("%Y-%m-%d")
     logger.info(f"🕘 === DAILY SCHEDULER START === {today}")
 
-    # 1. Load admin-configured tickers
+    # 1. Ticker universe = admin ticker config ∪ every user's AUTO-priced tickers.
+    #    Securities a user prices on their own (MANUAL / GENERIC-JSON) are skipped here.
     ticker_config = fs.get_supported_tickers()
-    all_tickers = list(set(
+    universe = set(
         ticker_config.get("stocks", []) +
         ticker_config.get("crypto", []) +
         ticker_config.get("funds", [])
-    ))
+    )
+    users = _get_all_user_ids()
+    user_data = {}
+    all_transactions = []
+    for user_info in users:
+        uid, utype = user_info["user_id"], user_info["user_type"]
+        try:
+            transactions = fs.get_transactions(uid, utype)
+            securities = fs.get_securities(uid, utype)
+        except Exception as e:
+            logger.error(f"  ❌ Cannot load data for user {uid}: {e}")
+            continue
+        user_data[uid] = (utype, transactions, securities)
+        all_transactions.extend(transactions)
+        universe.update(ps.auto_priced_tickers(transactions, securities))
 
-    if not all_tickers:
-        # Fallback: collect from all users if admin has not configured yet
-        logger.warning("No admin tickers configured, falling back to user transaction tickers")
-        users = _get_all_user_ids()
-        fallback_tickers = set()
-        for user_info in users:
-            try:
-                transactions = fs.get_transactions(user_info["user_id"], user_info["user_type"])
-                fallback_tickers.update(_extract_tickers(transactions))
-            except Exception:
-                pass
-        all_tickers = sorted(fallback_tickers)
+    all_tickers = sorted(universe)
+    logger.info(f"📈 Fetching prices for {len(all_tickers)} tickers: {all_tickers}")
 
-    if not all_tickers:
-        logger.warning("No tickers found at all, skipping.")
-        return
-
-    logger.info(f"📈 Fetching prices for {len(all_tickers)} tickers: {sorted(all_tickers)}")
-    
-    ticker_type_map = {}
-    for t in ticker_config.get("stocks", []): ticker_type_map[t] = "stock"
-    for t in ticker_config.get("crypto", []): ticker_type_map[t] = "crypto"
-    for t in ticker_config.get("funds", []): ticker_type_map[t] = "fund"
+    from app.services.quote_update_service import ticker_type_map_for, update_user_json_feeds
+    ticker_type_map = ticker_type_map_for(all_transactions)
 
     # 2. Batch fetch all prices
     price_results = price_service.fetch_all_portfolio_prices(all_tickers, target_date=today, ticker_type_map=ticker_type_map)
@@ -151,7 +140,7 @@ def daily_price_snapshot_job():
     logger.info(f"  USDT/VNĐ rate: {usdt_vnd:,.0f}")
 
     # 4. Determine which tickers are crypto (for USD → VND conversion)
-    crypto_tickers = set(ticker_config.get("crypto", []))
+    crypto_tickers = set(ticker_config.get("crypto", [])) | {t for t, kind in ticker_type_map.items() if kind == "crypto"}
     stablecoin_tickers = {"USDT", "USDC"}
 
     # 5. Build system prices dict (ALL prices in VND)
@@ -183,7 +172,7 @@ def daily_price_snapshot_job():
                     "date": today,
                     "source": result.get("source", "vang.today"),
                 }
-        elif ticker in crypto_tickers:
+        elif ticker in crypto_tickers or result.get("type") == "crypto":
             # Crypto from CoinGecko comes in USD — convert to VND
             price_usd = raw_price
             price_vnd = round(price_usd * usdt_vnd) if usdt_vnd else 0
@@ -222,21 +211,23 @@ def daily_price_snapshot_job():
     effective_market_prices = dict(firestore_market_prices)
     effective_market_prices.update(market_update)
 
-    # 9. For each user: calculate portfolio snapshot using system prices
-    users = _get_all_user_ids()
-    for user_info in users:
-        uid = user_info["user_id"]
-        utype = user_info["user_type"]
+    # 9. For each user: refresh their JSON feeds, overlay their own prices, save a snapshot
+    feed_cache = {}
+    for uid, (utype, transactions, securities) in user_data.items():
         try:
-            transactions = fs.get_transactions(uid, utype)
+            feeds = update_user_json_feeds(uid, utype, securities, feed_cache)
+            if feeds["updated"] or feeds["errors"]:
+                logger.info(f"  🔗 User {uid}: {len(feeds['updated'])} JSON feeds updated, {len(feeds['errors'])} failed")
             if not transactions:
                 continue
 
             external_assets = fs.get_external_assets(uid, utype)
             liabilities = fs.get_liabilities(uid, utype)
+            user_prices = fs.get_security_prices(uid, utype)
+            prices_for_user = ps.apply_user_prices(effective_market_prices, securities, user_prices, today)
 
             holdings = ps.calculate_holdings(transactions)
-            portfolio = ps.calculate_portfolio(holdings, effective_market_prices)
+            portfolio = ps.calculate_portfolio(holdings, prices_for_user)
             snapshot = ps.generate_snapshot(portfolio, external_assets, liabilities, transactions)
 
             fs.save_snapshot(uid, utype, today, snapshot)

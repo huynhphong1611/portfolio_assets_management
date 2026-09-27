@@ -384,3 +384,91 @@ def generate_snapshot(portfolio: list, external_assets: list,
         "portfolioPnLPercent": pnl["totalPnLPercent"],
         "assetClassBreakdown": class_map,
     }
+
+
+# ── User-owned prices (Portfolio Performance "quote feed" model) ──
+#
+# Every user keeps their own security master data and price history:
+#   securities/{ticker}      → { feed: AUTO | MANUAL | GENERIC-JSON, … }
+#   securityPrices/{ticker}  → { prices: { "YYYY-MM-DD": close } }
+#
+#   AUTO          system prices (vnstock / CoinGecko / SJC) win; the user's own
+#                 prices only fill dates the system does not know
+#   MANUAL        prices entered or imported by the user (no download)
+#   GENERIC-JSON  prices downloaded from a user-configured JSON URL
+# For MANUAL and GENERIC-JSON the user's latest price on/before the valuation
+# date wins; a system price is only used when the user has none yet.
+
+FEED_AUTO = "AUTO"
+FEED_MANUAL = "MANUAL"
+FEED_JSON = "GENERIC-JSON"
+USER_PRICED_FEEDS = {FEED_MANUAL, FEED_JSON}
+STABLECOINS = {"USDT", "USDC"}
+
+
+def security_feeds(securities: list | None) -> dict:
+    """Map ticker → feed id (upper-case), defaulting to AUTO."""
+    feeds = {}
+    for s in securities or []:
+        ticker = (s.get("ticker") or s.get("id") or "").strip().upper()
+        if ticker:
+            feeds[ticker] = (s.get("feed") or FEED_AUTO).upper()
+    return feeds
+
+
+def latest_price_on_or_before(price_map: dict | None, date_str: str):
+    """Return (date, price) of the most recent entry on/before date_str, or (None, None)."""
+    best = None
+    for d in (price_map or {}):
+        if d <= date_str and (best is None or d > best):
+            best = d
+    if best is None:
+        return None, None
+    try:
+        value = float(price_map[best])
+    except (TypeError, ValueError):
+        return None, None
+    return best, value
+
+
+def apply_user_prices(market_prices: dict | None, securities: list | None,
+                      user_prices: dict | None, date_str: str, tickers=None) -> dict:
+    """
+    Overlay a user's own prices on system market prices for valuation on date_str.
+    Returns a new dict compatible with calculate_portfolio().
+    Mirrors resolveMarketPrices() in src/utils/priceResolver.js.
+    """
+    out = dict(market_prices or {})
+    feeds = security_feeds(securities)
+    user_prices = user_prices or {}
+    candidates = set(user_prices.keys()) | set(feeds.keys())
+    if tickers is not None:
+        candidates &= {t for t in tickers if t}
+
+    for ticker in candidates:
+        d, price = latest_price_on_or_before(user_prices.get(ticker), date_str)
+        if price is None or price <= 0:
+            continue
+        feed = feeds.get(ticker, FEED_AUTO)
+        has_system = bool((out.get(ticker) or {}).get("price"))
+        if feed in USER_PRICED_FEEDS or not has_system:
+            entry = {"price": price, "date": d, "source": "user"}
+            if ticker in STABLECOINS:
+                entry["exchangeRate"] = price
+            out[ticker] = entry
+    return out
+
+
+def auto_priced_tickers(transactions: list | None, securities: list | None) -> list:
+    """
+    Tickers whose prices should be downloaded by the system feed:
+    tickers traded or listed by the user, except those the user prices on their own.
+    """
+    feeds = security_feeds(securities)
+    tickers = set()
+    for tx in transactions or []:
+        t = (tx.get("ticker") or "").strip().upper()
+        if t and t != "VNĐ":
+            tickers.add(t)
+    tickers |= set(feeds.keys())
+    return sorted(t for t in tickers if feeds.get(t, FEED_AUTO) == FEED_AUTO)
