@@ -1,4 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import { ASSET_CLASS_COLORS, ASSET_CLASS_ORDER, assetClassLabel } from '../../utils/assetClasses.js';
+import { useChartWidth } from './useChartWidth.js';
+import { dateAxisLabel, dateTooltipLabel, isLongRange } from './scale.js';
 
 /**
  * 100% Stacked Area Chart for asset allocation over time.
@@ -10,30 +13,9 @@ import React, { useMemo, useState } from 'react';
  * @param {number} height    - chart height in pixels
  */
 
-const ASSET_COLORS = {
-  'Tiền mặt VNĐ':   '#6366f1', // indigo
-  'Tiền mặt USD':    '#3b82f6', // blue
-  'Trái phiếu':      '#10b981', // emerald
-  'Cổ phiếu':        '#f59e0b', // amber
-  'Tài sản mã hóa':  '#ef4444', // red
-  'Vàng':            '#eab308', // yellow-gold
-};
+const ASSET_COLORS = ASSET_CLASS_COLORS;
+const ASSET_ORDER = ASSET_CLASS_ORDER;
 
-const ASSET_ORDER = [
-  'Tiền mặt VNĐ',
-  'Tiền mặt USD',
-  'Trái phiếu',
-  'Cổ phiếu',
-  'Tài sản mã hóa',
-  'Vàng',
-];
-
-function formatDateLabel(dateStr) {
-  if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-  return dateStr.substring(0, 5);
-}
 
 function formatVndShort(val) {
   if (Math.abs(val) >= 1e9) return (val / 1e9).toFixed(1) + ' tỷ';
@@ -45,8 +27,8 @@ function formatVndShort(val) {
 export default function StackedAreaChart({ snapshots = [], height = 300 }) {
   const [hoveredIdx, setHoveredIdx] = useState(null);
 
-  const padding = { top: 20, right: 20, bottom: 40, left: 55 };
-  const width = 800;
+  const [containerRef, width] = useChartWidth(800);
+  const padding = { top: 20, right: width < 520 ? 10 : 20, bottom: 40, left: 48 };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
@@ -130,11 +112,14 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
     }));
 
     // X-axis labels
-    const step = Math.max(1, Math.floor(dates.length / 7));
+    const longRange = isLongRange(dates[0], dates[dates.length - 1]);
+    const formatDateLabel = (d) => dateAxisLabel(d, longRange);
+    const maxLabels = Math.max(2, Math.floor(chartW / 90));
+    const step = Math.max(1, Math.floor(dates.length / maxLabels));
     const xLabels = [];
     dates.forEach((label, i) => {
       if (i === 0 || i === dates.length - 1) {
-        xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
+        xLabels.push({ label: formatDateLabel(label), x: xScale(i), anchor: i === 0 ? 'start' : 'end' });
       } else if (i % step === 0 && (dates.length - 1 - i) >= step * 0.6) {
         xLabels.push({ label: formatDateLabel(label), x: xScale(i) });
       }
@@ -145,7 +130,7 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
 
   if (!processed) {
     return (
-      <div className="chart-empty">
+      <div ref={containerRef} className="chart-empty">
         Chưa đủ dữ liệu phân bổ tài sản (cần ít nhất 2 snapshots có breakdown)
       </div>
     );
@@ -157,7 +142,7 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
   const hoveredData = hoveredIdx !== null ? stackedData[hoveredIdx] : null;
 
   return (
-    <div className="stacked-area-chart-container line-chart-container">
+    <div ref={containerRef} className="stacked-area-chart-container line-chart-container">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="line-chart-svg"
@@ -191,7 +176,7 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
 
         {/* X-axis labels */}
         {xLabels.map((l, i) => (
-          <text key={i} x={l.x} y={height - 8} textAnchor="middle" className="chart-axis-label">
+          <text key={i} x={l.x} y={height - 8} textAnchor={l.anchor || 'middle'} className="chart-axis-label">
             {l.label}
           </text>
         ))}
@@ -235,14 +220,14 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
       {/* Tooltip */}
       {hoveredData && (
         <div className="chart-tooltip">
-          <div className="chart-tooltip-date">{hoveredData.date}</div>
+          <div className="chart-tooltip-date">{dateTooltipLabel(hoveredData.date)}</div>
           {orderedClasses.map((cls, i) => {
             const layer = hoveredData.layers[i];
             if (layer.pct <= 0) return null;
             return (
               <div key={i} className="chart-tooltip-row">
                 <span className="chart-tooltip-dot" style={{ background: ASSET_COLORS[cls] || '#94a3b8' }}></span>
-                <span className="chart-tooltip-label">{cls}</span>
+                <span className="chart-tooltip-label">{assetClassLabel(cls)}</span>
                 <span className="chart-tooltip-value">
                   <span style={{ color: 'var(--text-color)', marginRight: '6px', fontSize: '11px' }}>
                     {formatVndShort(layer.value)}
@@ -266,7 +251,7 @@ export default function StackedAreaChart({ snapshots = [], height = 300 }) {
         {areaPaths.map((ap, i) => (
           <div key={i} className="chart-legend-item">
             <span className="chart-legend-dot" style={{ background: ap.color }}></span>
-            <span>{ap.className}</span>
+            <span>{assetClassLabel(ap.className)}</span>
           </div>
         ))}
       </div>

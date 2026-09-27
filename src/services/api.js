@@ -194,6 +194,11 @@ export async function apiGetLatestDailyPrices() {
   return requestData('/prices/daily/latest');
 }
 
+/** System daily price history, newest first: [{ date, prices: {TICKER: vnd}, usdt_vnd_rate }] */
+export async function apiGetDailyPriceHistory(limit = 365) {
+  return requestData(`/prices/daily?limit=${encodeURIComponent(limit)}`);
+}
+
 export async function apiGetFundListing(fundType = '') {
   let url = '/prices/funds/listing';
   if (fundType) url += `?fund_type=${fundType}`;

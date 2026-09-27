@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, ArrowRightLeft, TrendingUp, TrendingDown, Coins } from 'lucide-react';
 import { apiAddTransaction, apiUpdateTransaction } from '../services/api';
 
 const ASSET_TYPES = [
@@ -16,6 +16,7 @@ const TX_TYPES = [
   { value: 'Mua',      label: 'Mua',      color: 'blue',    icon: <TrendingUp size={16} /> },
   { value: 'Bán',      label: 'Bán',      color: 'rose',    icon: <TrendingDown size={16} /> },
   { value: 'Rút tiền', label: 'Rút tiền', color: 'orange',  icon: <TrendingDown size={16} /> },
+  { value: 'Cổ tức',   label: 'Cổ tức / Lãi', color: 'violet', icon: <Coins size={16} /> },
 ];
 
 const CURRENCIES = ['VNĐ', 'USDT', 'USDC'];
@@ -38,6 +39,9 @@ const initialFormState = {
   notes: '',
   // withdrawal-only
   withdrawalAmount: '',
+  // dividend / interest only
+  dividendAmount: '',
+  dividendShares: '',
 };
 
 export default function AddTransactionModal({ isOpen, onClose, onSuccess, transactionToEdit, portfolio = [] }) {
@@ -47,10 +51,17 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
   React.useEffect(() => {
     if (isOpen) {
       if (transactionToEdit) {
+        const total = Math.abs(transactionToEdit.totalVND || 0);
+        const qty = Math.abs(transactionToEdit.quantity || 0);
+        const isDiv = transactionToEdit.transactionType === 'Cổ tức';
         setForm({
           ...initialFormState,
           ...transactionToEdit,
-          quantity: Math.abs(transactionToEdit.quantity), // remove negative sign for Bán
+          quantity: qty, // remove negative sign for Bán
+          withdrawalAmount: transactionToEdit.transactionType === 'Rút tiền' ? String(total) : '',
+          dividendAmount: isDiv ? String(total) : '',
+          // quantity 1 with unitPrice == total means "no share count recorded"
+          dividendShares: isDiv && !(qty === 1 && Math.abs((transactionToEdit.unitPrice || 0) - total) < 0.01) ? String(qty) : '',
         });
       } else {
         setForm({ ...initialFormState, date: now() });
@@ -71,6 +82,11 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           next.currency   = 'VNĐ';
           next.exchangeRate = '1';
         }
+        if (value === 'Cổ tức') {
+          next.currency = 'VNĐ';
+          next.exchangeRate = '1';
+          if (next.assetClass === 'Tiền mặt VNĐ') next.assetClass = 'Cổ phiếu';
+        }
       }
       return next;
     });
@@ -78,9 +94,11 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
 
   const isCashTx  = form.transactionType === 'Nạp tiền' || form.transactionType === 'Rút tiền';
   const isWithdraw = form.transactionType === 'Rút tiền';
+  const isDividend = form.transactionType === 'Cổ tức';
 
   const calculatedTotal = () => {
     if (isWithdraw) return parseFloat(form.withdrawalAmount) || 0;
+    if (isDividend) return parseFloat(form.dividendAmount) || 0;
     const qty  = parseFloat(form.quantity)  || 0;
     const price = parseFloat(form.unitPrice) || 0;
     const rate  = parseFloat(form.exchangeRate) || 1;
@@ -136,6 +154,42 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           exchangeRate: 1,
           costBasisValue: 0,
           totalVND: withdrawal,
+          pnlVND: 0, pnlPercent: 0,
+          storage: form.storage,
+          notes: form.notes,
+        };
+        if (transactionToEdit) {
+          await apiUpdateTransaction(transactionToEdit.id, txData);
+        } else {
+          await apiAddTransaction(txData);
+        }
+        setForm({ ...initialFormState, date: now() });
+        if (onSuccess) onSuccess();
+        onClose();
+        return;
+      }
+
+      // ── Cổ tức / lãi: cash in, no change to the position ──
+      if (isDividend) {
+        const amount = parseFloat(form.dividendAmount) || 0;
+        if (amount <= 0) {
+          alert('⚠️ Vui lòng nhập số tiền nhận được hợp lệ.');
+          setSaving(false); return;
+        }
+        const shares = Math.abs(parseFloat(form.dividendShares) || 0);
+        const ticker = (form.ticker || '').trim().toUpperCase();
+        const divQty = shares > 0 ? shares : 1;
+        const txData = {
+          date: form.date || now(),
+          transactionType: 'Cổ tức',
+          assetClass: ticker ? form.assetClass : 'Tiền mặt VNĐ',
+          ticker,
+          quantity: divQty,
+          unitPrice: amount / divQty,
+          currency: 'VNĐ',
+          exchangeRate: 1,
+          costBasisValue: 0,
+          totalVND: amount,
           pnlVND: 0, pnlPercent: 0,
           storage: form.storage,
           notes: form.notes,
@@ -269,7 +323,8 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           <div className="form-row-2">
             <div className="form-group">
               <label className="form-label">Mã tài sản (Ticker)</label>
-              <input type="text" className="form-input" value={form.ticker} onChange={e => handleChange('ticker', e.target.value)} placeholder="VD: VFF, USDT, CMCP..." required />
+              <input type="text" className="form-input" value={form.ticker} onChange={e => handleChange('ticker', e.target.value)}
+                placeholder={isDividend ? 'VD: VNM — để trống nếu là lãi tiền gửi' : 'VD: VFF, USDT, CMCP...'} required={!isDividend} />
             </div>
             <div className="form-group">
               <label className="form-label">Nơi lưu trữ</label>
@@ -309,8 +364,24 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
             </div>
           )}
 
-          {/* ── Asset quantity / price — hidden for Rut tien ── */}
-          {!isWithdraw && (
+          {/* ── Dividend / interest — amount received ── */}
+          {isDividend && (
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label">Số tiền nhận (VNĐ)</label>
+                <input type="number" step="any" className="form-input" value={form.dividendAmount}
+                  onChange={e => handleChange('dividendAmount', e.target.value)} placeholder="Cổ tức tiền mặt, coupon, lãi…" required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Số CP hưởng <span className="form-label-hint">(không bắt buộc)</span></label>
+                <input type="number" step="any" className="form-input" value={form.dividendShares}
+                  onChange={e => handleChange('dividendShares', e.target.value)} placeholder="VD: 1000" />
+              </div>
+            </div>
+          )}
+
+          {/* ── Asset quantity / price — hidden for Rut tien & Co tuc ── */}
+          {!isWithdraw && !isDividend && (
           <div className="form-row-4">
             <div className="form-group">
               <label className="form-label">Số lượng</label>
@@ -335,7 +406,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
 
           {/* Calculated Total */}
           <div className="form-total-box">
-            <span className="form-total-label">{isWithdraw ? 'Số tiền rút (VNĐ)' : 'Thành tiền (VNĐ)'}</span>
+            <span className="form-total-label">{isWithdraw ? 'Số tiền rút (VNĐ)' : isDividend ? 'Số tiền nhận (VNĐ)' : 'Thành tiền (VNĐ)'}</span>
             <span className="form-total-value" style={isWithdraw ? { color: 'var(--color-rose-400)' } : {}}>
               {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(calculatedTotal())}
             </span>
