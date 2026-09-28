@@ -3465,3 +3465,45 @@ body {
   gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
+
+/* Date-time field: text input + native picker button */
+.datetime-input {
+  position: relative;
+  display: flex;
+}
+.datetime-input .form-input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 38px;
+}
+.datetime-input__btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.datetime-input__btn:hover {
+  background: var(--color-blue-100);
+  color: var(--color-blue-500);
+}
+.datetime-input__native {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
