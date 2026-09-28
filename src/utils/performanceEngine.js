@@ -309,7 +309,7 @@ export function replayTransactions(transactions = []) {
     if (!securities[ticker]) {
       securities[ticker] = {
         ticker, assetClass: assetClass || 'Khác', currency: currency || 'VNĐ',
-        buys: [], sells: [], earnings: [], realized: 0, earningsTotal: 0,
+        buys: [], sells: [], earnings: [], log: [], realized: 0, earningsTotal: 0,
         grossBuy: 0, grossSell: 0, firstDate: null, lastDate: null, storages: new Set(),
       };
     }
@@ -351,6 +351,7 @@ export function replayTransactions(transactions = []) {
       pos.totalCost += amount;
       s.buys.push({ date, amount, qty });
       s.grossBuy += amount;
+      s.log.push({ date, side: 'buy', qty, amount, price: qty > 0 ? amount / qty : 0, avgCost: pos.totalCost / pos.qty, qtyAfter: pos.qty });
     } else if (type === TX_TYPES.SELL) {
       const pos = positions[ticker];
       const held = pos && pos.qty > EPS ? pos.qty : 0;
@@ -383,6 +384,7 @@ export function replayTransactions(transactions = []) {
       pos.qty -= sellQty;
       pos.totalCost -= costBasis;
       if (pos.qty <= EPS) { pos.qty = 0; pos.totalCost = 0; pos.openDate = null; }
+      s.log.push({ date, side: 'sell', qty: sellQty, amount: exitValue, price: exitValue / sellQty, avgCost, qtyAfter: pos.qty });
     }
   }
 
@@ -430,7 +432,7 @@ export function computeSecurityPerformance(replay, portfolio = [], today = today
   const tickers = new Set([...Object.keys(replay.securities), ...portfolio.map(p => p.ticker).filter(t => t !== 'VNĐ')]);
 
   for (const ticker of tickers) {
-    const s = replay.securities[ticker] || { buys: [], sells: [], earnings: [], realized: 0, earningsTotal: 0, grossBuy: 0, grossSell: 0, assetClass: 'Khác', firstDate: null, lastDate: null, storages: [] };
+    const s = replay.securities[ticker] || { buys: [], sells: [], earnings: [], log: [], realized: 0, earningsTotal: 0, grossBuy: 0, grossSell: 0, assetClass: 'Khác', firstDate: null, lastDate: null, storages: [] };
     const cur = byTicker[ticker];
     const marketValue = cur ? cur.actualValue : 0;
     const purchaseValue = cur ? cur.totalCost : 0;

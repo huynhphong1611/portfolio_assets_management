@@ -1,18 +1,33 @@
 import React, { useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import { usePortfolioData } from '../../contexts/PortfolioDataContext.jsx';
 import { Card, Kpi, PageHeader, DataTable, Badge } from '../../components/ui';
 import { computeSecurityPerformance } from '../../utils/performanceEngine.js';
 import { assetClassLabel } from '../../utils/assetClasses.js';
 import { fmtPct, fmtSignedVND, fmtVND, fmtDuration, toneOf } from '../../utils/formatters.js';
+import { useDailyPriceHistory } from '../../hooks/useDailyPriceHistory.js';
+import { securityFeeds, mergePriceSeries } from '../../utils/priceResolver.js';
+import { buildSecurityChartData } from '../../utils/securityChart.js';
+import SecurityTradeChart from '../../components/charts/SecurityTradeChart.jsx';
 
 /** PP → Reports → Performance → Securities */
 export default function SecurityPerformanceView() {
-  const { replay, portfolio, today } = usePortfolioData();
+  const { replay, portfolio, today, securities, userPrices, marketPrices } = usePortfolioData();
   const [showClosed, setShowClosed] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const { seriesByTicker, loading: histLoading } = useDailyPriceHistory(1000);
 
   const rows = useMemo(() => computeSecurityPerformance(replay, portfolio, today), [replay, portfolio, today]);
   const cashInterest = useMemo(() => replay.earnings.filter(e => e.ticker === 'VNĐ').reduce((s, e) => s + e.amount, 0), [replay]);
   const visible = useMemo(() => (showClosed ? rows : rows.filter(r => r.isOpen)), [rows, showClosed]);
+
+  const selectedLog = selected ? replay.securities[selected]?.log || [] : [];
+  const chartData = useMemo(() => {
+    if (!selected) return null;
+    const feed = securityFeeds(securities)[selected];
+    const series = mergePriceSeries(seriesByTicker[selected] || [], userPrices?.[selected], feed);
+    return buildSecurityChartData(selectedLog, series, { today, currentPrice: marketPrices[selected]?.price || 0 });
+  }, [selected, selectedLog, securities, seriesByTicker, userPrices, marketPrices, today]);
 
   const sum = (key) => (list) => list.reduce((s, r) => s + (r[key] || 0), 0);
   const totals = { unrealized: sum('unrealized')(rows), realized: sum('realized')(rows), earnings: sum('earnings')(rows), total: sum('totalPnL')(rows) };
@@ -32,6 +47,8 @@ export default function SecurityPerformanceView() {
         <DataTable
           rows={visible}
           rowKey={r => r.ticker}
+          onRowClick={r => setSelected(cur => (cur === r.ticker ? null : r.ticker))}
+          selectedKey={selected}
           defaultSort={{ key: 'marketValue', dir: 'desc' }}
           columns={[
             { key: 'ticker', label: 'Mã', render: r => (
@@ -57,6 +74,13 @@ export default function SecurityPerformanceView() {
           </div>
         )}
       </Card>
+      {selected && (
+        <Card title={`${selected} · Giá, giá vốn bình quân và lệnh mua/bán`}
+          subtitle={histLoading ? 'Đang tải lịch sử giá…' : 'Bấm lại vào dòng trong bảng để ẩn biểu đồ'}
+          actions={<button type="button" className="pp-btn pp-btn--ghost" onClick={() => setSelected(null)} aria-label="Đóng biểu đồ"><X size={16} /></button>}>
+          <SecurityTradeChart data={chartData} log={selectedLog} />
+        </Card>
+      )}
     </>
   );
 }

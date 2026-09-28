@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X, ArrowRightLeft, TrendingUp, TrendingDown, Coins } from 'lucide-react';
 import { apiAddTransaction, apiUpdateTransaction } from '../services/api';
+import DateTimeInput from './ui/DateTimeInput.jsx';
 import { positionBefore, oversellsIntroducedBy } from '../utils/dataChecks.js';
+import useOverlayClose from './ui/useOverlayClose.js';
 
 const ASSET_TYPES = [
   { value: 'Tiền mặt VNĐ', label: 'Tiền mặt VNĐ', icon: '💵' },
@@ -48,6 +50,7 @@ const initialFormState = {
 export default function AddTransactionModal({ isOpen, onClose, onSuccess, transactionToEdit, transactions = [] }) {
   const [form, setForm] = useState(initialFormState);
   const [saving, setSaving] = useState(false);
+  const overlayProps = useOverlayClose(onClose);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -260,8 +263,8 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" {...overlayProps}>
+      <div className="modal-container">
         <div className="modal-header">
           <div className="modal-header-content">
             <div className="modal-icon"><ArrowRightLeft size={20} /></div>
@@ -293,7 +296,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           <div className="form-row-2">
             <div className="form-group">
               <label className="form-label">Ngày giờ giao dịch</label>
-              <input type="text" className="form-input" value={form.date} onChange={e => handleChange('date', e.target.value)} placeholder="dd/mm/yyyy HH:mm:ss" required />
+              <DateTimeInput value={form.date} onChange={v => handleChange('date', v)} required />
             </div>
             <div className="form-group">
               <label className="form-label">Loại tài sản</label>
@@ -308,7 +311,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSuccess, transa
           {isWithdraw && (
           <div className="form-group">
             <label className="form-label">Ngày rút tiền</label>
-            <input type="text" className="form-input" value={form.date} onChange={e => handleChange('date', e.target.value)} placeholder="dd/mm/yyyy HH:mm:ss" required />
+            <DateTimeInput value={form.date} onChange={v => handleChange('date', v)} required />
           </div>
           )}
 

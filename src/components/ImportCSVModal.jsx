@@ -5,6 +5,7 @@ import { DataTable, TxTypeBadge, Badge } from './ui';
 import { TRANSACTION_TEMPLATE, PRICE_TEMPLATE, downloadText } from '../utils/csvTemplates.js';
 import { fmtVND, fmtPrice, formatQty } from '../utils/formatters.js';
 import { formatISO, toISO } from '../utils/dates.js';
+import useOverlayClose from './ui/useOverlayClose.js';
 
 const NUMBER_FORMATS = [
   { value: 'auto', label: 'Tự nhận dạng' },
@@ -38,6 +39,7 @@ export default function ImportCSVModal({ mode = 'transactions', open, onClose, o
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const overlayProps = useOverlayClose(onClose);
   const copy = COPY[mode];
 
   useEffect(() => {
@@ -81,8 +83,8 @@ export default function ImportCSVModal({ mode = 'transactions', open, onClose, o
     : Object.values(preview?.tickers || {}).reduce((s, t) => s + t.count, 0);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container pp-import-modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" {...overlayProps}>
+      <div className="modal-container pp-import-modal">
         <div className="modal-header">
           <div className="modal-header-content">
             <div className="modal-icon"><Upload size={20} /></div>
